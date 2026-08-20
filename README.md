@@ -96,8 +96,12 @@ BBX Chat webhook / GET /api/jobs/:jobId ── user notified "Report ready"
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── SETUP.md
+│   └── DEPLOYMENT.md
+└── workspace/                      # gitignored — OpenClaw agent workspace (mounted volume)
+```
 
 ## Quick start
+
 
 ```bash
 git clone https://github.com/dpkchohan/bbx-paw-openclaw
@@ -129,8 +133,8 @@ Summary:
 | --- | --- |
 | `OPENCLAW_PORT`, `OPENCLAW_GATEWAY_BIND`, `OPENCLAW_GATEWAY_TOKEN` | Gateway network/auth |
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Bedrock inference + Titan embeddings |
-| `MODEL_CHEAP`, `MODEL_DEFAULT`, `MODEL_CODING`, `MODEL_CRITICAL` | 4-tier model IDs (see below) |
-| `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY` | Serves `MODEL_DEFAULT` (not a Bedrock model — see tier note) |
+| `MODEL_CHEAP`, `MODEL_DEFAULT`, `MODEL_CODING`, `MODEL_CRITICAL` | 4-tier model IDs (literal values, see below) |
+| `OPENAI_API_KEY` | Auth for Tier 2 (`gpt-5.6-luna`), served directly by `https://api.openai.com/v1` — not a Bedrock model |
 | `TRIGGER_API_URL`, `TRIGGER_SECRET_KEY`, `TRIGGER_PROJECT_REF` | Self-hosted Trigger.dev instance |
 | `MONGO_URI`, `MONGO_DB_NAME`, `MONGO_PAW_JOBS_COLLECTION` | Job bookkeeping shared with BBX Chat |
 | `WORKSPACE_PATH` | OpenClaw agent workspace mount |
@@ -141,22 +145,20 @@ Summary:
 Defined once in [config/models.yaml](config/models.yaml) and compiled into
 OpenClaw's `openclaw.json` by [config/openclaw.config.js](config/openclaw.config.js):
 
-| Tier | Model | Cost / 1M tokens | Use |
-| --- | --- | --- | --- |
-| 1 — cheap | Amazon Nova Pro (Bedrock) | $0.80 | classification, extraction, routing |
-| 2 — default | GPT-5.6 Luna (OpenAI-compatible endpoint) | $0.22 | general chat, default background worker |
-| 3 — coding | Claude Sonnet 4.5 (Bedrock) | $2.00 | code generation/review, analysis |
-| 4 — critical | Claude Sonnet 5 (Bedrock) | $2.00 | high-stakes decisions, long autonomous research |
+| Tier | Model | Provider | Cost / 1M tokens | Use |
+| --- | --- | --- | --- | --- |
+| tier1_cheap | `us.amazon.nova-pro-v1:0` | Bedrock | $0.80 | classification, extraction, routing |
+| tier2_default | `gpt-5.6-luna` | OpenAI (`https://api.openai.com/v1`) | $0.22 | general chat, default background worker |
+| tier3_coding | `anthropic.claude-sonnet-4-5-20250929-v1:0` | Bedrock | $2.00 | code generation/review, analysis |
+| tier4_critical | `global.anthropic.claude-sonnet-5` | Bedrock | $2.00 | high-stakes decisions, long autonomous research |
 
 **Read this before deploying:** AWS Bedrock does not host OpenAI models, so
-Tier 2 (GPT-5.6 Luna) cannot run on Bedrock directly — it's routed through
-`OPENAI_COMPATIBLE_BASE_URL` instead. The exact Bedrock model IDs for
-Claude Sonnet 4.5/5 also need to be confirmed against your account via
-`openclaw models list` before go-live; placeholders are called out in
-`.env.example` and `config/models.yaml`.
-
-│   └── DEPLOYMENT.md
-└── workspace/                      # gitignored — OpenClaw agent workspace (mounted volume)
+Tier 2 (`gpt-5.6-luna`) is served directly by the official OpenAI API using
+`OPENAI_API_KEY` — not Bedrock. Tier 4's `global.anthropic.claude-sonnet-5`
+uses a cross-region inference-profile prefix (`global.`); confirm exact
+availability for your AWS account/region with `openclaw models list` before
+go-live. All four model ids live in [config/models.yaml](config/models.yaml)
+as the single source of truth.
 
 ## Deploying to Coolify
 
@@ -210,14 +212,14 @@ User (BBX Chat): "Research NASA GSFC projects and create a summary report"
 
 - [x] Repo structure initialized (`config/`, `workflows/trigger-jobs/`, `docs/`, `workspace/`)
 - [x] `package.json` + npm scripts for installing the official OpenClaw package
-- [x] `.env.example` with every variable this repo reads
-- [x] `config/models.yaml` — 4-tier model strategy, single source of truth
+- [x] `.env.example` with every variable this repo reads (including `OPENAI_API_KEY`)
+- [x] `config/models.yaml` — 4-tier model strategy with confirmed literal model IDs and providers
 - [x] `config/openclaw.config.js` — generates `openclaw.json` from the YAML + env
 - [x] `Dockerfile` + `docker-compose.yml` — Coolify-ready, installs official `openclaw` npm package
 - [x] `workflows/trigger-jobs/openclaw-task.js` — Trigger.dev v3 task calling the Gateway
 - [x] `docs/ARCHITECTURE.md`, `docs/SETUP.md`, `docs/DEPLOYMENT.md`
-- [ ] Confirmed real Bedrock model IDs for Claude Sonnet 4.5 / Sonnet 5 in your AWS account
-- [ ] `OPENCLAW_GATEWAY_TOKEN` and other secrets provisioned in Coolify
+- [ ] Confirmed `global.anthropic.claude-sonnet-5` cross-region profile is invokable in your AWS account/region
+- [ ] `OPENCLAW_GATEWAY_TOKEN`, `OPENAI_API_KEY`, and other secrets provisioned in Coolify
 - [ ] BBX Chat backend wired to call `tasks.trigger("openclaw-task", ...)`
 - [ ] End-to-end smoke test against the live Trigger.dev instance (`server.pddt.in`)
 
@@ -233,4 +235,3 @@ openclaw models list            # which Bedrock models can this account see?
 curl -fsS http://127.0.0.1:18789/healthz
 ```
 
-```

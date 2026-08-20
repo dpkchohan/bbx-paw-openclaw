@@ -19,6 +19,7 @@
    `.env.example`. At minimum for a working deploy:
    - `OPENCLAW_GATEWAY_TOKEN` (generate with `openssl rand -hex 32`)
    - `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+   - `OPENAI_API_KEY` (required for Tier 2 / `gpt-5.6-luna`, served by `https://api.openai.com/v1`)
    - `MODEL_CHEAP`, `MODEL_DEFAULT`, `MODEL_CODING`, `MODEL_CRITICAL`
    - `MONGO_URI` (BBX Chat's existing MongoDB connection string)
    - `TRIGGER_API_URL`, `TRIGGER_SECRET_KEY`

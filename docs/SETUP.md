@@ -21,6 +21,8 @@ binary/package.
 - Docker + Docker Compose (for the containerized path / Coolify parity)
 - AWS credentials with Bedrock model access enabled in `us-east-1`
   (`bedrock:InvokeModelWithResponseStream`, `bedrock:ListFoundationModels`)
+- An OpenAI API key (`OPENAI_API_KEY`) for Tier 2 (`gpt-5.6-luna`), which is
+  served directly by `https://api.openai.com/v1` — not Bedrock
 - Access to the shared MongoDB instance used by BBX Chat (optional but
   recommended — enables job status bookkeeping)
 - A Trigger.dev project on the self-hosted instance at `server.pddt.in`
@@ -87,9 +89,12 @@ curl -fsS http://127.0.0.1:18789/v1/models -H "Authorization: Bearer $OPENCLAW_G
 
 ## Confirming Bedrock model IDs
 
-The model IDs in `.env.example` for Tier 3/4 (Claude Sonnet 4.5 / Sonnet 5)
-are best-effort placeholders. Confirm the exact inference-profile IDs your
-AWS account can invoke:
+The model IDs in `config/models.yaml` for tier3_coding
+(`anthropic.claude-sonnet-4-5-20250929-v1:0`) and tier4_critical
+(`global.anthropic.claude-sonnet-5`, a cross-region inference profile) are
+the confirmed values for this deployment. Still verify they're invokable
+in your specific AWS account/region before go-live:
+
 
 ```bash
 aws bedrock list-foundation-models --region us-east-1 \

@@ -4,7 +4,7 @@
  * ---------------------------------------------------------------------------
  * Generates ~/.openclaw/openclaw.json (or $OPENCLAW_CONFIG_PATH) for the
  * OpenClaw Gateway from:
- *   - config/models.yaml          (4-tier model strategy)
+ *   - config/models.yaml          (4-tier model strategy — literal model ids)
  *   - process.env                 (secrets, ports, paths — see .env.example)
  *
  * OpenClaw's real config file is openclaw.json (JSON5) read from
@@ -13,6 +13,12 @@
  * OUR generator that produces that JSON5 file so the 4-tier strategy in
  * models.yaml stays the single source of truth instead of being hand-edited
  * in two places.
+ *
+ * Tier -> OpenClaw provider mapping (see config/models.yaml header comment):
+ *   provider: bedrock -> OpenClaw provider id "amazon-bedrock" (auth: aws-sdk,
+ *             credentials from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION)
+ *   provider: openai  -> OpenClaw provider id "openai" (auth via OPENAI_API_KEY,
+ *             base URL from each tier's `base_url`, default https://api.openai.com/v1)
  *
  * Usage:
  *   node config/openclaw.config.js            # write config + print summary
@@ -44,12 +50,12 @@ try {
 const REPO_ROOT = path.resolve(__dirname, "..");
 const MODELS_YAML_PATH = path.join(__dirname, "models.yaml");
 
-function expandEnvTemplate(value, env) {
-  if (typeof value !== "string") return value;
-  return value.replace(/\$\{([A-Z0-9_]+)\}/g, (match, name) => {
-    return env[name] !== undefined && env[name] !== "" ? env[name] : match;
-  });
-}
+// Maps config/models.yaml's short `provider` value to OpenClaw's real
+// provider id used in openclaw.json / model refs (provider/model-id).
+const PROVIDER_ID_MAP = {
+  bedrock: "amazon-bedrock",
+  openai: "openai",
+};
 
 function loadModelsYaml() {
   const raw = fs.readFileSync(MODELS_YAML_PATH, "utf8");
@@ -71,7 +77,7 @@ function resolveWorkspacePath() {
   );
 }
 
-function buildBedrockModelEntry(id, opts) {
+function buildModelEntry(id, opts) {
   return {
     id,
     name: opts.label,
@@ -88,25 +94,34 @@ function buildBedrockModelEntry(id, opts) {
   };
 }
 
+function providerId(tier) {
+  return PROVIDER_ID_MAP[tier.provider] || tier.provider;
+}
+
+
 function buildConfig(env) {
   const modelsYaml = loadModelsYaml();
   const tiers = modelsYaml.tiers || {};
   const region = env.AWS_REGION || env.AWS_DEFAULT_REGION || "us-east-1";
 
-  // Resolve ${VAR} placeholders inside models.yaml against process.env.
-  const resolvedTierModelId = {};
-  for (const [tierName, tier] of Object.entries(tiers)) {
-    resolvedTierModelId[tierName] = expandEnvTemplate(tier.model, env);
-  }
-
   const bedrockModels = [];
   const seenBedrockIds = new Set();
-  for (const [tierName, tier] of Object.entries(tiers)) {
-    if (tier.provider !== "amazon-bedrock") continue;
-    const modelId = resolvedTierModelId[tierName];
-    if (!modelId || seenBedrockIds.has(modelId)) continue;
-    seenBedrockIds.add(modelId);
-    bedrockModels.push(buildBedrockModelEntry(modelId, tier));
+  const openaiModels = [];
+  const seenOpenaiIds = new Set();
+  let openaiBaseUrl = null;
+
+  for (const [, tier] of Object.entries(tiers)) {
+    const pid = providerId(tier);
+    if (pid === "amazon-bedrock") {
+      if (!tier.model || seenBedrockIds.has(tier.model)) continue;
+      seenBedrockIds.add(tier.model);
+      bedrockModels.push(buildModelEntry(tier.model, tier));
+    } else if (pid === "openai") {
+      if (!tier.model || seenOpenaiIds.has(tier.model)) continue;
+      seenOpenaiIds.add(tier.model);
+      openaiModels.push(buildModelEntry(tier.model, tier));
+      openaiBaseUrl = openaiBaseUrl || tier.base_url;
+    }
   }
 
   const providers = {};
@@ -118,32 +133,24 @@ function buildConfig(env) {
       models: bedrockModels,
     };
   }
-
-  // Optional OpenAI-compatible provider for tiers that cannot run on Bedrock
-  // (see the warning at the top of models.yaml — e.g. the "default" tier).
-  const openaiCompatTiers = Object.entries(tiers).filter(
-    ([, t]) => t.provider === "openai-compatible"
-  );
-  if (openaiCompatTiers.length > 0 && env.OPENAI_COMPATIBLE_BASE_URL) {
-    providers["openai-compatible"] = {
-      baseUrl: env.OPENAI_COMPATIBLE_BASE_URL,
+  if (openaiModels.length > 0) {
+    providers["openai"] = {
+      baseUrl: openaiBaseUrl || "https://api.openai.com/v1",
       api: "openai-responses",
-      apiKey: "${OPENAI_COMPATIBLE_API_KEY}",
-      models: openaiCompatTiers.map(([tierName, tier]) =>
-        buildBedrockModelEntry(resolvedTierModelId[tierName], tier)
-      ),
+      apiKey: "${OPENAI_API_KEY}",
+      models: openaiModels,
     };
   }
 
-  const defaultTierName = modelsYaml.defaultTier || "default";
+  const defaultTierName = modelsYaml.defaultTier;
   const defaultTier = tiers[defaultTierName];
   const defaultModelRef = defaultTier
-    ? `${defaultTier.provider}/${resolvedTierModelId[defaultTierName]}`
+    ? `${providerId(defaultTier)}/${defaultTier.model}`
     : `amazon-bedrock/${env.MODEL_CHEAP || "us.amazon.nova-pro-v1:0"}`;
 
   const fallbackRefs = Object.entries(tiers)
     .filter(([name]) => name !== defaultTierName)
-    .map(([name, tier]) => `${tier.provider}/${resolvedTierModelId[name]}`);
+    .map(([, tier]) => `${providerId(tier)}/${tier.model}`);
 
   const config = {
     gateway: {
@@ -198,6 +205,7 @@ function buildConfig(env) {
 
   return config;
 }
+
 
 function toJson5(config) {
   // OpenClaw config is JSON5 but plain JSON is valid JSON5, so pretty JSON
