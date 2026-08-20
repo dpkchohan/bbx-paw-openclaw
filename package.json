@@ -1,0 +1,38 @@
+{
+  "name": "bbx-paw-openclaw",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BBX Personal Autonomous Workstation (PAW) - integrates the official OpenClaw agent gateway with BBX Chat, AWS Bedrock (4-tier model routing), and Trigger.dev background jobs.",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.22.3"
+  },
+  "scripts": {
+    "setup": "npm install -g openclaw@latest --allow-scripts=openclaw",
+    "generate:config": "node config/openclaw.config.js",
+    "onboard": "openclaw onboard --install-daemon",
+    "gateway": "openclaw gateway --bind lan --port ${OPENCLAW_PORT:-18789}",
+    "gateway:status": "openclaw gateway status",
+    "models:list": "openclaw models list",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f openclaw",
+    "trigger:dev": "npx trigger.dev@latest dev",
+    "trigger:deploy": "npx trigger.dev@latest deploy"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "^3.3.17",
+    "dotenv": "^16.4.5",
+    "js-yaml": "^4.1.0",
+    "mongodb": "^6.9.0"
+  },
+  "devDependencies": {
+    "trigger.dev": "^3.3.17"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dpkchohan/bbx-paw-openclaw"
+  }
+}

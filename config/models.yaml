@@ -1,0 +1,98 @@
+# =============================================================================
+# BBX PAW — 4-Tier Model Strategy
+# =============================================================================
+# Consumed by:
+#   - config/openclaw.config.js   -> generates the amazon-bedrock provider
+#                                     block in ~/.openclaw/openclaw.json
+#   - workflows/trigger-jobs/openclaw-task.js
+#                                  -> maps a job's requested "tier" to a
+#                                     concrete model id sent via the
+#                                     x-openclaw-model header on the
+#                                     Gateway's OpenAI-compatible endpoint.
+#
+# IMPORTANT / KNOWN LIMITATION (read before deploying):
+#   AWS Bedrock only serves models from Amazon, Anthropic, Meta, Mistral,
+#   Cohere, AI21 and Stability. It does NOT host OpenAI "GPT" models.
+#   The "GPT-5.6 Luna" tier from the original spec therefore CANNOT run on
+#   Bedrock. This file models that tier with provider: openai-compatible so
+#   it can be routed to whatever OpenAI-compatible endpoint actually serves
+#   that model (e.g. an internal proxy, OpenRouter, or Azure OpenAI). Point
+#   OPENAI_COMPATIBLE_BASE_URL / OPENAI_COMPATIBLE_API_KEY at that endpoint,
+#   or simply replace MODEL_DEFAULT with a real Bedrock model id and set
+#   DEFAULT_TIER_PROVIDER=amazon-bedrock to keep everything on Bedrock.
+#
+#   Also: "anthropic.claude-sonnet-4.5" / "anthropic.claude-sonnet-5" are
+#   NOT valid Bedrock model ids as published today. Real Bedrock ids carry
+#   a region profile prefix and release date, e.g.
+#   "us.anthropic.claude-sonnet-4-5-20250929-v1:0". Run `openclaw models
+#   list` (or `aws bedrock list-foundation-models`) after credentials are
+#   configured and update the ids below to match what your account can
+#   actually invoke.
+# =============================================================================
+
+version: 1
+
+# Default provider for tiers that don't set their own `provider`.
+defaultProvider:
+  id: amazon-bedrock
+  api: bedrock-converse-stream
+  auth: aws-sdk
+  # ${AWS_REGION} is substituted by config/openclaw.config.js at generation time.
+  baseUrl: "https://bedrock-runtime.${AWS_REGION}.amazonaws.com"
+
+tiers:
+  cheap:
+    label: "Tier 1 - Cheap tasks"
+    provider: amazon-bedrock
+    model: "${MODEL_CHEAP}" # default: us.amazon.nova-pro-v1:0
+    costPerMillionTokensUsd: 0.80
+    contextWindow: 300000
+    maxTokens: 4096
+    reasoning: false
+    use:
+      - classification
+      - extraction
+      - simple-qa
+      - routing / triage
+
+  default:
+    label: "Tier 2 - Default worker"
+    provider: openai-compatible # see limitation note above
+    model: "${MODEL_DEFAULT}" # default: gpt-5.6-luna
+    costPerMillionTokensUsd: 0.22
+    contextWindow: 128000
+    maxTokens: 8192
+    reasoning: false
+    use:
+      - general chat
+      - background job default
+      - summarization
+
+  coding:
+    label: "Tier 3 - Coding / analysis"
+    provider: amazon-bedrock
+    model: "${MODEL_CODING}" # default: anthropic.claude-sonnet-4.5
+    costPerMillionTokensUsd: 2.00
+    contextWindow: 200000
+    maxTokens: 8192
+    reasoning: true
+    use:
+      - code generation
+      - code review
+      - data analysis
+
+  critical:
+    label: "Tier 4 - Critical tasks"
+    provider: amazon-bedrock
+    model: "${MODEL_CRITICAL}" # default: anthropic.claude-sonnet-5
+    costPerMillionTokensUsd: 2.00
+    contextWindow: 200000
+    maxTokens: 8192
+    reasoning: true
+    use:
+      - high-stakes decisions
+      - long-running autonomous research
+      - final review before delivery to user
+
+# Tier used when a Trigger.dev job payload omits `tier`.
+defaultTier: default

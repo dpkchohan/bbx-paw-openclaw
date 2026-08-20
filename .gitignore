@@ -1,0 +1,31 @@
+# =============================================================================
+# BBX PAW OpenClaw Integration — .gitignore
+# =============================================================================
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OpenClaw state (bind-mounted from host, mirrors docker-compose.yml volumes)
+.openclaw/
+.openclaw-auth-profile-secrets/
+
+# Agent workspace (gitignored per project spec — persisted via Docker volume)
+workspace/*
+!workspace/.gitkeep
+
+# Node
+node_modules/
+npm-debug.log*
+dist/
+build/
+
+# Trigger.dev
+.trigger/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
