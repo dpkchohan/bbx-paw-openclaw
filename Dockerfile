@@ -72,11 +72,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
 
 EXPOSE 18789
 
-# Ensure .openclaw directory exists and is writable
-RUN mkdir -p /home/node/.openclaw/workspace && \
-    chown -R node:node /home/node/.openclaw && \
-    chmod -R 755 /home/node/.openclaw
-
 ENTRYPOINT ["tini", "-s", "--", "/usr/local/bin/openclaw-entrypoint.sh"]
 CMD ["openclaw", "gateway", "--bind", "lan", "--port", "18789"]
+
 

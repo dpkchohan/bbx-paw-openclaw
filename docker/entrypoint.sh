@@ -1,7 +1,4 @@
 #!/bin/sh
-# Ensure config directory exists
-mkdir -p ~/.openclaw
-
 # =============================================================================
 # BBX PAW OpenClaw container entrypoint
 # =============================================================================
@@ -26,3 +23,4 @@ node /app/config/openclaw.config.js
 
 echo "[entrypoint] Starting: $*"
 exec "$@"
+
