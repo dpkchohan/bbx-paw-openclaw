@@ -44,10 +44,11 @@ const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 
 const TIER_MODEL_REF = {
   cheap: `amazon-bedrock/${process.env.MODEL_CHEAP || "us.amazon.nova-pro-v1:0"}`,
-  default: `openai/${process.env.MODEL_DEFAULT || "gpt-5.6-luna"}`,
+  default: `amazon-bedrock/${process.env.MODEL_DEFAULT || "global.openai.gpt-5.6-luna"}`,
   coding: `amazon-bedrock/${process.env.MODEL_CODING || "anthropic.claude-sonnet-4-5-20250929-v1:0"}`,
   critical: `amazon-bedrock/${process.env.MODEL_CRITICAL || "global.anthropic.claude-sonnet-5"}`,
 };
+
 
 
 let mongoClientPromise = null;

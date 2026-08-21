@@ -14,11 +14,17 @@
  * models.yaml stays the single source of truth instead of being hand-edited
  * in two places.
  *
- * Tier -> OpenClaw provider mapping (see config/models.yaml header comment):
- *   provider: bedrock -> OpenClaw provider id "amazon-bedrock" (auth: aws-sdk,
- *             credentials from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION)
- *   provider: openai  -> OpenClaw provider id "openai" (auth via OPENAI_API_KEY,
- *             base URL from each tier's `base_url`, default https://api.openai.com/v1)
+ * All 4 tiers run on Amazon Bedrock's native Converse API (OpenClaw provider
+ * id "amazon-bedrock", auth: "aws-sdk"). This includes Tier 2 (GPT-5.6
+ * Luna), which is OpenAI's model hosted directly in Bedrock's own catalog
+ * ("openai." vendor prefix) — not the separate Bedrock Mantle provider. See
+ * the header comment in config/models.yaml for the full explanation and the
+ * confirmed model id / inference profile.
+ *
+ * Because every tier is Bedrock, this is a single AWS-credentials-only
+ * setup: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION (or any
+ * other AWS SDK credential source — instance role, SSO, shared profile).
+ * No OpenAI API key or separate endpoint config is required.
  *
  * Usage:
  *   node config/openclaw.config.js            # write config + print summary
@@ -52,9 +58,10 @@ const MODELS_YAML_PATH = path.join(__dirname, "models.yaml");
 
 // Maps config/models.yaml's short `provider` value to OpenClaw's real
 // provider id used in openclaw.json / model refs (provider/model-id).
+// All current tiers use "bedrock" -> "amazon-bedrock"; this map is kept
+// extensible in case a future tier needs a different provider.
 const PROVIDER_ID_MAP = {
   bedrock: "amazon-bedrock",
-  openai: "openai",
 };
 
 function loadModelsYaml() {
@@ -80,12 +87,12 @@ function resolveWorkspacePath() {
 function buildModelEntry(id, opts) {
   return {
     id,
-    name: opts.label,
+    name: opts.name || opts.label,
     reasoning: !!opts.reasoning,
     input: ["text", "image"],
     cost: {
-      input: 0,
-      output: 0,
+      input: opts.inputCostPerMillionTokensUsd || 0,
+      output: opts.outputCostPerMillionTokensUsd || 0,
       cacheRead: 0,
       cacheWrite: 0,
     },
@@ -99,6 +106,7 @@ function providerId(tier) {
 }
 
 
+
 function buildConfig(env) {
   const modelsYaml = loadModelsYaml();
   const tiers = modelsYaml.tiers || {};
@@ -106,22 +114,13 @@ function buildConfig(env) {
 
   const bedrockModels = [];
   const seenBedrockIds = new Set();
-  const openaiModels = [];
-  const seenOpenaiIds = new Set();
-  let openaiBaseUrl = null;
 
   for (const [, tier] of Object.entries(tiers)) {
     const pid = providerId(tier);
-    if (pid === "amazon-bedrock") {
-      if (!tier.model || seenBedrockIds.has(tier.model)) continue;
-      seenBedrockIds.add(tier.model);
-      bedrockModels.push(buildModelEntry(tier.model, tier));
-    } else if (pid === "openai") {
-      if (!tier.model || seenOpenaiIds.has(tier.model)) continue;
-      seenOpenaiIds.add(tier.model);
-      openaiModels.push(buildModelEntry(tier.model, tier));
-      openaiBaseUrl = openaiBaseUrl || tier.base_url;
-    }
+    if (pid !== "amazon-bedrock") continue; // all current tiers are Bedrock
+    if (!tier.model || seenBedrockIds.has(tier.model)) continue;
+    seenBedrockIds.add(tier.model);
+    bedrockModels.push(buildModelEntry(tier.model, tier));
   }
 
   const providers = {};
@@ -131,14 +130,6 @@ function buildConfig(env) {
       api: "bedrock-converse-stream",
       auth: "aws-sdk",
       models: bedrockModels,
-    };
-  }
-  if (openaiModels.length > 0) {
-    providers["openai"] = {
-      baseUrl: openaiBaseUrl || "https://api.openai.com/v1",
-      api: "openai-responses",
-      apiKey: "${OPENAI_API_KEY}",
-      models: openaiModels,
     };
   }
 
@@ -151,6 +142,7 @@ function buildConfig(env) {
   const fallbackRefs = Object.entries(tiers)
     .filter(([name]) => name !== defaultTierName)
     .map(([, tier]) => `${providerId(tier)}/${tier.model}`);
+
 
   const config = {
     gateway: {

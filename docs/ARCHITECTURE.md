@@ -9,8 +9,9 @@ BBX PAW connects four systems that already exist independently:
 2. **Trigger.dev** (`https://server.pddt.in`) — self-hosted background job
    runner, 8 Docker containers, already integrated with BBX Chat for
    Bedrock workflows.
-3. **AWS Bedrock** (`us-east-1`) — 4-tier model strategy (Nova Pro / GPT-5.6
-   Luna / Claude Sonnet 4.5 / Claude Sonnet 5).
+3. **AWS Bedrock** (`us-east-1`) — 4-tier model strategy, all on Bedrock's
+   native Converse API (Amazon Nova Pro / GPT-5.6 Luna / Claude Sonnet 4.5 /
+   Claude Sonnet 5).
 4. **OpenClaw** (this repo) — the official open-source personal AI assistant
    gateway, installed from npm, configured to use the above three.
 
@@ -98,9 +99,11 @@ strategy. `config/openclaw.config.js` reads it plus `process.env` and
 writes `~/.openclaw/openclaw.json` (JSON5). The Docker entrypoint
 (`docker/entrypoint.sh`) runs this generator on every container start so a
 stale mounted `.openclaw/` volume never drifts from the checked-in model
-strategy. See the header comments in both files for exact behavior and
-known limitations (Bedrock has no OpenAI models; Claude Sonnet 4.5/5 model
-IDs must be confirmed per-account).
+strategy. All four tiers compile into a single `amazon-bedrock` provider
+block — see the header comments in both files for the exact model ids
+(including GPT-5.6 Luna's `global.openai.gpt-5.6-luna` cross-region
+inference profile, confirmed via the AWS Bedrock console) and notes on
+reconfirming inference-profile availability per AWS account/region.
 
 ## Ports and network
 

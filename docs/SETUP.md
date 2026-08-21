@@ -20,9 +20,9 @@ binary/package.
 - Node.js 22.22.3+, 24.15+, or 25.9+ (OpenClaw's own requirement)
 - Docker + Docker Compose (for the containerized path / Coolify parity)
 - AWS credentials with Bedrock model access enabled in `us-east-1`
-  (`bedrock:InvokeModelWithResponseStream`, `bedrock:ListFoundationModels`)
-- An OpenAI API key (`OPENAI_API_KEY`) for Tier 2 (`gpt-5.6-luna`), which is
-  served directly by `https://api.openai.com/v1` — not Bedrock
+  (`bedrock:InvokeModelWithResponseStream`, `bedrock:ListFoundationModels`,
+  `bedrock:ListInferenceProfiles` — Tier 2's GPT-5.6 Luna and Tier 4's
+  Claude Sonnet 5 both use cross-region inference profiles)
 - Access to the shared MongoDB instance used by BBX Chat (optional but
   recommended — enables job status bookkeeping)
 - A Trigger.dev project on the self-hosted instance at `server.pddt.in`
@@ -89,23 +89,34 @@ curl -fsS http://127.0.0.1:18789/v1/models -H "Authorization: Bearer $OPENCLAW_G
 
 ## Confirming Bedrock model IDs
 
-The model IDs in `config/models.yaml` for tier3_coding
-(`anthropic.claude-sonnet-4-5-20250929-v1:0`) and tier4_critical
-(`global.anthropic.claude-sonnet-5`, a cross-region inference profile) are
-the confirmed values for this deployment. Still verify they're invokable
-in your specific AWS account/region before go-live:
+All four tiers now run on Amazon Bedrock's native Converse API — the model
+IDs in `config/models.yaml` are the confirmed values for this deployment,
+verified directly in the AWS Bedrock console for account `834474891352`
+(`us-east-1`):
 
+| Tier | Model ID (as invoked) | Verified via |
+| --- | --- | --- |
+| tier1_cheap | `us.amazon.nova-pro-v1:0` | Bedrock model catalog |
+| tier2_default | `global.openai.gpt-5.6-luna` (cross-region inference profile; base model `openai.gpt-5.6-luna`) | Bedrock console inference-profile page |
+| tier3_coding | `anthropic.claude-sonnet-4-5-20250929-v1:0` | Bedrock model catalog |
+| tier4_critical | `global.anthropic.claude-sonnet-5` (cross-region inference profile) | Bedrock console inference-profile page |
+
+Still verify they're invokable in your specific AWS account/region before
+go-live, especially after any account/region change:
 
 ```bash
 aws bedrock list-foundation-models --region us-east-1 \
-  --query "modelSummaries[?contains(modelId,'claude')].modelId"
+  --query "modelSummaries[].modelId"
+aws bedrock list-inference-profiles --region us-east-1 \
+  --query "inferenceProfileSummaries[].inferenceProfileId"
 # or, once the Gateway has credentials:
 openclaw models list
 ```
 
-Update `MODEL_CODING` / `MODEL_CRITICAL` in `.env` to match, then re-run
-`npm run generate:config` (or restart the Docker container, which
-regenerates automatically).
+Update `MODEL_CHEAP` / `MODEL_DEFAULT` / `MODEL_CODING` / `MODEL_CRITICAL`
+in `.env` to match, then re-run `npm run generate:config` (or restart the
+Docker container, which regenerates automatically).
+
 
 ## Troubleshooting
 
