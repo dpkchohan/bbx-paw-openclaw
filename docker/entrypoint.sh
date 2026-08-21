@@ -2,25 +2,59 @@
 # =============================================================================
 # BBX PAW OpenClaw container entrypoint
 # =============================================================================
-# 1. Ensure the OpenClaw state/config directory exists and is writable by
-#    the current user before anything else runs. Host bind-mounts
-#    (docker-compose.yaml volumes) can land as root-owned on first run on
-#    some Docker hosts even though the image creates them as node:node,
-#    which caused EACCES failures writing openclaw.json. This check is a
-#    cheap, idempotent safety net on every container start.
-# 2. Regenerate ~/.openclaw/openclaw.json from config/models.yaml + env on
-#    every container start, so the 4-tier model strategy always matches the
-#    checked-in config even if the mounted state volume is stale.
-# 3. Exec the real command (default: `openclaw gateway ...`).
+# Runs as root (see Dockerfile: no `USER node` before ENTRYPOINT) so it can
+# fix ownership/permissions on bind-mounted volumes before anything else
+# happens, then drops privileges to the `node` user via gosu.
+#
+# Why this is necessary: docker-compose.yaml bind-mounts host directories
+# (${OPENCLAW_CONFIG_DIR:-./.openclaw}, ${OPENCLAW_WORKSPACE_DIR:-./workspace},
+# ${OPENCLAW_AUTH_PROFILE_SECRET_DIR:-...}) onto /home/node/.openclaw,
+# /home/node/.openclaw/workspace, and /home/node/.config/openclaw. A bind
+# mount always reflects the *host* directory's existing ownership -- it is
+# NOT affected by the image's build-time `chown -R node:node` (Dockerfile),
+# because that chown only touches the image layer, and the mount replaces
+# that layer's content at container start. On a fresh host (or Coolify's
+# managed volumes), Docker auto-creates missing bind-mount sources as
+# root:root, which makes the unprivileged `node` process fail with EACCES
+# writing openclaw.json/session state. Running this fix-up as root on every
+# container start (idempotent, cheap) makes the container self-healing
+# regardless of what owns the mount initially.
+#
+# Steps:
+# 1. Ensure the OpenClaw state/config/workspace directories exist.
+# 2. Fix their ownership/permissions for the `node` user (root-only op).
+# 3. Regenerate ~/.openclaw/openclaw.json from config/models.yaml + env, so
+#    the 4-tier model strategy always matches the checked-in config even if
+#    the mounted state volume is stale.
+# 4. Drop privileges to `node` and exec the real command (default:
+#    `openclaw gateway ...`), via gosu, so OpenClaw never actually runs as root.
 # =============================================================================
 set -e
 
-mkdir -p ~/.openclaw
-mkdir -p ~/.openclaw/workspace
+OPENCLAW_HOME_DIR="${OPENCLAW_HOME:-/home/node}"
+OPENCLAW_DIR="${OPENCLAW_STATE_DIR:-$OPENCLAW_HOME_DIR/.openclaw}"
+OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DIR:-$OPENCLAW_DIR/workspace}"
+OPENCLAW_CONFIG_HOME="/home/node/.config/openclaw"
+
+mkdir -p "$OPENCLAW_DIR" "$OPENCLAW_WORKSPACE" "$OPENCLAW_CONFIG_HOME"
+
+echo "[entrypoint] Fixing ownership/permissions on mounted volumes ..."
+chown -R node:node "$OPENCLAW_DIR" "$OPENCLAW_CONFIG_HOME"
+chmod -R 755 "$OPENCLAW_DIR" "$OPENCLAW_CONFIG_HOME"
+
+# Also cover npm's own state (~/.npm, ~/.config outside the openclaw
+# subdirs). OpenClaw's runtime lazily installs/repairs provider plugins via
+# npm (e.g. @openclaw/amazon-bedrock-provider) and fails with EACCES if any
+# part of npm's cache is root-owned, even when the openclaw-specific
+# directories above are already correct. Fixed at build time too (see
+# Dockerfile), but repeating it here makes the container self-healing if a
+# volume ever mounts over part of $HOME as root-owned.
+chown -R node:node "$OPENCLAW_HOME_DIR/.npm" 2>/dev/null || true
+chown -R node:node "$OPENCLAW_HOME_DIR/.config" 2>/dev/null || true
 
 echo "[entrypoint] Generating OpenClaw config from config/models.yaml ..."
-node /app/config/openclaw.config.js
+gosu node node /app/config/openclaw.config.js
 
-echo "[entrypoint] Starting: $*"
-exec "$@"
+echo "[entrypoint] Starting as node: $*"
+exec gosu node "$@"
 

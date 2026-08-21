@@ -26,11 +26,14 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-# Install curl/tini for the entrypoint + healthcheck, then the official
+# Install curl/tini/gosu for the entrypoint + healthcheck, then the official
 # OpenClaw CLI as a global npm package (per project restriction: use the
-# published package, do not build OpenClaw from source).
+# published package, do not build OpenClaw from source). gosu lets the
+# entrypoint start as root (to fix bind-mount ownership at runtime, see
+# docker/entrypoint.sh) and then drop privileges to the `node` user before
+# exec'ing the actual OpenClaw process.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl tini ca-certificates && \
+    apt-get install -y --no-install-recommends curl tini gosu ca-certificates && \
     rm -rf /var/lib/apt/lists/* && \
     npm install -g openclaw@latest --allow-scripts=openclaw && \
     npm cache clean --force
@@ -49,22 +52,25 @@ RUN chmod +x /usr/local/bin/openclaw-entrypoint.sh && \
       /home/node/.openclaw/workspace \
       /home/node/.config/openclaw
 
-# Belt-and-suspenders permission fix: the `node` user must be able to write
-# its state/config/workspace files under /home/node/.openclaw at runtime.
-# The `install -d` step above already creates these with node:node
-# ownership, but Coolify/host bind-mounts (docker-compose.yaml volumes) can
-# still land as root:root on first run on some Docker hosts, which caused
-# EACCES failures writing openclaw.json. Explicitly (re)create and chown/chmod
-# both directories so the container never depends on the mount's initial
-# ownership.
-RUN mkdir -p /home/node/.openclaw && \
-    chown -R node:node /home/node/.openclaw && \
-    chmod -R 755 /home/node/.openclaw
+# Every RUN step above (apt-get, `npm install -g`, the later `npm install`,
+# and `install -d`) executes as root with HOME=/home/node already set, so
+# each one can create/touch files under /home/node as root:root -- most
+# notably ~/.npm and the ~/.config parent directory. Left root-owned,
+# OpenClaw's runtime fails at startup trying to lazily install/repair
+# provider plugins via npm (e.g. @openclaw/amazon-bedrock-provider) against
+# a root-owned npm cache, even though the openclaw-specific subdirectories
+# above were already explicitly created as node:node. Chown the ENTIRE home
+# directory once, here, as the last root-owned step, so nothing baked into
+# this image layer is ever root-owned. docker/entrypoint.sh repeats an
+# equivalent fix at runtime for bind-mounted volumes (which reflect the
+# *host* directory's ownership and are therefore unaffected by this
+# build-time chown).
+RUN chown -R node:node /home/node
 
-RUN mkdir -p /home/node/.openclaw/workspace && \
-    chown -R node:node /home/node/.openclaw/workspace
-
-USER node
+# NOTE: no `USER node` here. The container must start as root so
+# docker/entrypoint.sh can fix ownership of bind-mounted volumes (which
+# always reflect the *host* directory's ownership, not this image's build-time
+# chown) before dropping privileges to `node` via gosu. See entrypoint.sh.
 
 # Built-in OpenClaw probe endpoints: /healthz, /startupz, /readyz.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
@@ -74,5 +80,7 @@ EXPOSE 18789
 
 ENTRYPOINT ["tini", "-s", "--", "/usr/local/bin/openclaw-entrypoint.sh"]
 CMD ["openclaw", "gateway", "--bind", "lan", "--port", "18789"]
+
+
 
 

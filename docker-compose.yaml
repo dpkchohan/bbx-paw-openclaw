@@ -42,6 +42,20 @@ services:
       MONGO_DB_NAME: ${MONGO_DB_NAME:-bbx_chat}
       MONGO_PAW_JOBS_COLLECTION: ${MONGO_PAW_JOBS_COLLECTION:-paw_jobs}
     volumes:
+      # Bind-mount host directories for persistent OpenClaw state, workspace
+      # files, and auth secrets. These are intentionally host bind mounts
+      # (not named Docker volumes) so their contents stay directly browsable
+      # on the host and survive `docker compose down` without extra steps.
+      #
+      # Runtime permission fix: bind mounts always take on the *host*
+      # directory's ownership when Docker auto-creates them (typically
+      # root:root on Coolify/Linux hosts), which crashed the unprivileged
+      # `node` user with EACCES writing openclaw.json/session state. The
+      # container now starts as root and self-heals ownership of these
+      # exact paths (docker/entrypoint.sh chowns them to node:node) before
+      # dropping privileges via gosu and exec'ing the actual OpenClaw
+      # process — so it's safe for these host directories to start out
+      # owned by any user, including root.
       - "${OPENCLAW_CONFIG_DIR:-./.openclaw}:/home/node/.openclaw"
       - "${OPENCLAW_WORKSPACE_DIR:-./workspace}:/home/node/.openclaw/workspace"
       - "${OPENCLAW_AUTH_PROFILE_SECRET_DIR:-./.openclaw-auth-profile-secrets}:/home/node/.config/openclaw"

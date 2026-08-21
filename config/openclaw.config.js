@@ -167,36 +167,47 @@ function buildConfig(env) {
           primary: defaultModelRef,
           fallbacks: fallbackRefs,
         },
+        // Bedrock Titan embeddings for agent memory search — uses the same
+        // AWS SDK credential chain as inference, no extra API key needed.
+        memorySearch: {
+          provider: "bedrock",
+          model: "amazon.titan-embed-text-v2:0",
+        },
       },
-      entries: {
-        main: {
+      // NOTE: OpenClaw's real config schema is agents.list (an array of
+      // agent objects), NOT agents.entries (a keyed object) — confirmed via
+      // `openclaw config schema`. An earlier version of this generator used
+      // the wrong shape and failed Gateway startup with
+      // "agents: Invalid input, memory: Invalid input".
+      list: [
+        {
+          id: "main",
+          default: true,
           identity: {
             name: "BBX PAW",
             theme: "autonomous research and coding assistant for BBX",
             emoji: "🐾",
           },
         },
-      },
+      ],
     },
     models: {
       providers,
-    },
-    memory: {
-      search: {
-        // Bedrock Titan embeddings for agent memory search — uses the same
-        // AWS SDK credential chain as inference, no extra API key needed.
-        provider: "bedrock",
-        model: "amazon.titan-embed-text-v2:0",
-      },
     },
     // NOTE: OpenClaw's own control-plane/session state is always SQLite
     // (see docs/ARCHITECTURE.md "Storage" section) — it is NOT MongoDB.
     // MONGO_URI is consumed by our own trigger-jobs/openclaw-task.js for
     // job bookkeeping shared with BBX Chat, not by the OpenClaw gateway.
+    //
+    // NOTE: there is no top-level "memory.search" key in OpenClaw's schema
+    // (confirmed via `openclaw config schema`) — memory-search/embedding
+    // config lives per-agent at agents.defaults.memorySearch / agents.list[].
+    // memorySearch, which is set above.
   };
 
   return config;
 }
+
 
 
 function toJson5(config) {
