@@ -1,4 +1,7 @@
 #!/bin/sh
+# Ensure config directory exists
+mkdir -p ~/.openclaw
+
 # =============================================================================
 # BBX PAW OpenClaw container entrypoint
 # =============================================================================
