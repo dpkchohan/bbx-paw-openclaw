@@ -1,5 +1,5 @@
 # =============================================================================
-# BBX PAW OpenClaw Integration — docker-compose.yml
+# BBX PAW OpenClaw Integration — docker-compose.yaml
 # =============================================================================
 # Deploy target: Coolify, same EC2 host as BBX Chat, as a separate container.
 # Coolify reads this file directly (Docker Compose deployment type) and

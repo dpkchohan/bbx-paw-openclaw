@@ -82,7 +82,7 @@ BBX Chat webhook / GET /api/jobs/:jobId ── user notified "Report ready"
 ├── package.json                    # npm scripts: install OpenClaw, generate config, docker, trigger
 ├── .env.example                    # every env var this repo reads
 ├── .gitignore
-├── docker-compose.yml              # Coolify deployment unit
+├── docker-compose.yaml              # Coolify deployment unit (.yaml — Coolify requires this extension)
 ├── Dockerfile                      # installs the OFFICIAL `openclaw` npm package
 ├── docker/
 │   └── entrypoint.sh               # regenerates openclaw.json from models.yaml on boot
@@ -164,7 +164,7 @@ as the single source of truth.
 
 1. Push this repo to GitHub (already done: `dpkchohan/bbx-paw-openclaw`).
 2. In Coolify, create a new resource → **Docker Compose** → point it at this
-   repo's `docker-compose.yml`.
+   repo's `docker-compose.yaml`.
 3. Set every variable from `.env.example` in Coolify's environment editor
    (Coolify injects them the same way `.env` would).
 4. Deploy. Coolify builds the `Dockerfile` (installs the official `openclaw`
@@ -215,7 +215,7 @@ User (BBX Chat): "Research NASA GSFC projects and create a summary report"
 - [x] `.env.example` with every variable this repo reads (including `OPENAI_API_KEY`)
 - [x] `config/models.yaml` — 4-tier model strategy with confirmed literal model IDs and providers
 - [x] `config/openclaw.config.js` — generates `openclaw.json` from the YAML + env
-- [x] `Dockerfile` + `docker-compose.yml` — Coolify-ready, installs official `openclaw` npm package
+- [x] `Dockerfile` + `docker-compose.yaml` — Coolify-ready, installs official `openclaw` npm package
 - [x] `workflows/trigger-jobs/openclaw-task.js` — Trigger.dev v3 task calling the Gateway
 - [x] `docs/ARCHITECTURE.md`, `docs/SETUP.md`, `docs/DEPLOYMENT.md`
 - [ ] Confirmed `global.anthropic.claude-sonnet-5` cross-region profile is invokable in your AWS account/region

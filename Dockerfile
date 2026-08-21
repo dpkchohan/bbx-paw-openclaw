@@ -6,7 +6,7 @@
 # for Coolify/Docker bridge networking.
 #
 # Build:   docker build -t bbx-paw-openclaw .
-# Run:     use docker-compose.yml (handles volumes/env/ports/healthcheck).
+# Run:     use docker-compose.yaml (handles volumes/env/ports/healthcheck).
 # =============================================================================
 
 FROM node:22-bookworm-slim

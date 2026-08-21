@@ -4,7 +4,7 @@
 
 - Platform: **Coolify**
 - Host: same AWS EC2 instance already running BBX Chat
-- Unit: a separate Docker Compose resource (`docker-compose.yml` in this
+- Unit: a separate Docker Compose resource (`docker-compose.yaml` in this
   repo), running as its own container(s) alongside BBX Chat's, not merged
   into BBX Chat's stack.
 
@@ -14,7 +14,8 @@
 2. In Coolify: **New Resource → Docker Compose** (or "Docker Compose
    based application") → connect the GitHub repo → branch `main`.
 3. Point Coolify's build/deploy config at the repo root — it will pick up
-   `docker-compose.yml` and `Dockerfile` automatically.
+   `docker-compose.yaml` and `Dockerfile` automatically. Coolify expects the
+   `.yaml` extension for Docker Compose resources (not `.yml`).
 4. In Coolify's **Environment Variables** tab, add every variable listed in
    `.env.example`. At minimum for a working deploy:
    - `OPENCLAW_GATEWAY_TOKEN` (generate with `openssl rand -hex 32`)
@@ -82,5 +83,5 @@ does not lose in-progress agent workspace data.
 | --- | --- |
 | Healthcheck failing after deploy | Check `openclaw doctor` output in container logs; usually a bad/missing env var |
 | Gateway unreachable from Coolify's proxy | Confirm `OPENCLAW_GATEWAY_BIND=lan` (not `loopback`) and the exposed port matches `OPENCLAW_PORT` |
-| Volumes reset on redeploy | Confirm Coolify's persistent storage paths match `docker-compose.yml`'s volume targets exactly |
+| Volumes reset on redeploy | Confirm Coolify's persistent storage paths match `docker-compose.yaml`'s volume targets exactly |
 | Trigger.dev jobs time out | Increase `maxDuration` in `workflows/trigger-jobs/openclaw-task.js` (currently 3 hours) or check Bedrock throttling/quota |
