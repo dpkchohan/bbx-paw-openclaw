@@ -49,6 +49,21 @@ RUN chmod +x /usr/local/bin/openclaw-entrypoint.sh && \
       /home/node/.openclaw/workspace \
       /home/node/.config/openclaw
 
+# Belt-and-suspenders permission fix: the `node` user must be able to write
+# its state/config/workspace files under /home/node/.openclaw at runtime.
+# The `install -d` step above already creates these with node:node
+# ownership, but Coolify/host bind-mounts (docker-compose.yaml volumes) can
+# still land as root:root on first run on some Docker hosts, which caused
+# EACCES failures writing openclaw.json. Explicitly (re)create and chown/chmod
+# both directories so the container never depends on the mount's initial
+# ownership.
+RUN mkdir -p /home/node/.openclaw && \
+    chown -R node:node /home/node/.openclaw && \
+    chmod -R 755 /home/node/.openclaw
+
+RUN mkdir -p /home/node/.openclaw/workspace && \
+    chown -R node:node /home/node/.openclaw/workspace
+
 USER node
 
 # Built-in OpenClaw probe endpoints: /healthz, /startupz, /readyz.

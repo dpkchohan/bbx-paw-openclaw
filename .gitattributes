@@ -1,0 +1,11 @@
+# =============================================================================
+# BBX PAW OpenClaw Integration — .gitattributes
+# =============================================================================
+# Force LF line endings for files that run inside Linux containers,
+# regardless of the host OS's git core.autocrlf setting. A CRLF shebang
+# line (e.g. "#!/bin/sh\r") makes the container fail with
+# "bad interpreter: /bin/sh^M: no such file or directory".
+* text=auto
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-compose.yaml text eol=lf
