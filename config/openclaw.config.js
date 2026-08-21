@@ -105,6 +105,35 @@ function providerId(tier) {
   return PROVIDER_ID_MAP[tier.provider] || tier.provider;
 }
 
+// Fixed origins this Gateway must always accept, regardless of env config:
+//   - openclaw.pddt.in: the Control UI / dashboard domain (see
+//     https://openclaw.pddt.in) that Coolify routes to this container.
+//   - loopback (http://localhost:<port> / http://127.0.0.1:<port>): what
+//     OpenClaw itself auto-seeds when gateway.controlUi.allowedOrigins is
+//     left unset (see gateway startup log: "seeded
+//     gateway.controlUi.allowedOrigins ... for bind=lan"). Setting this
+//     list explicitly (for openclaw.pddt.in) would otherwise silently drop
+//     that auto-seeded local access, so we merge it back in here.
+function buildAllowedOrigins(env) {
+  const port = Number(env.OPENCLAW_PORT || 18789);
+  const fixedOrigins = [
+    "https://openclaw.pddt.in",
+    "http://openclaw.pddt.in",
+    `http://localhost:${port}`,
+    `http://127.0.0.1:${port}`,
+  ];
+
+  // Merge in any additional origins an operator supplies via env (comma
+  // separated), and dedupe the combined list while preserving order.
+  const extraOrigins = (env.OPENCLAW_EXTRA_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set([...fixedOrigins, ...extraOrigins]));
+}
+
+
 
 
 function buildConfig(env) {
@@ -159,6 +188,16 @@ function buildConfig(env) {
           chatCompletions: { enabled: true },
         },
       },
+      // Explicit CORS allowlist for the Control UI. When bind="lan" and this
+      // is left unset, OpenClaw auto-seeds ["http://localhost:<port>",
+      // "http://127.0.0.1:<port>"] at runtime without writing config (see
+      // gateway startup log: "seeded gateway.controlUi.allowedOrigins ...").
+      // We set it explicitly here so openclaw.pddt.in can reach the Control
+      // UI/Gateway HTTP API, while still merging in those same loopback
+      // defaults so setting this list doesn't silently drop local access.
+      controlUi: {
+        allowedOrigins: buildAllowedOrigins(env),
+      },
     },
     agents: {
       defaults: {
@@ -207,8 +246,6 @@ function buildConfig(env) {
 
   return config;
 }
-
-
 
 function toJson5(config) {
   // OpenClaw config is JSON5 but plain JSON is valid JSON5, so pretty JSON
