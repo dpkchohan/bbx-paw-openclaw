@@ -26,6 +26,7 @@ Trigger.dev, and Coolify.
 - [4-tier model strategy](#4-tier-model-strategy)
 - [Deploying to Coolify](#deploying-to-coolify)
 - [Trigger.dev integration](#triggerdev-integration)
+- [WhatsApp channel](#whatsapp-channel)
 - [Usage example](#usage-example)
 - [Status / what's implemented so far](#status--whats-implemented-so-far)
 - [Troubleshooting](#troubleshooting)
@@ -208,6 +209,18 @@ persists status/result to MongoDB, and notifies BBX Chat via webhook when
 done. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#triggerdev-job) for
 the full sequence diagram.
 
+## WhatsApp channel
+
+BBX PAW users can also message the agent directly on WhatsApp, using
+OpenClaw's own official `@openclaw/whatsapp` plugin (Baileys-based) — this
+repo does not implement a custom WhatsApp/Baileys client. The plugin is
+installed automatically by `docker/entrypoint.sh` at container runtime, and
+configured via `channels.whatsapp` in the generated `openclaw.json`
+(`config/openclaw.config.js`, controlled by `OPENCLAW_WHATSAPP_*` env vars).
+
+Full setup, QR linking, headless-server QR access, and troubleshooting:
+[docs/WHATSAPP-BAILEYS-SETUP.md](docs/WHATSAPP-BAILEYS-SETUP.md).
+
 ## Usage example
 
 ```
@@ -228,10 +241,12 @@ User (BBX Chat): "Research NASA GSFC projects and create a summary report"
 - [x] `Dockerfile` + `docker-compose.yaml` — Coolify-ready, installs official `openclaw` npm package
 - [x] `workflows/trigger-jobs/openclaw-task.js` — Trigger.dev v3 task calling the Gateway
 - [x] `docs/ARCHITECTURE.md`, `docs/SETUP.md`, `docs/DEPLOYMENT.md`
+- [x] WhatsApp channel — official `@openclaw/whatsapp` plugin (Baileys), installed at runtime, configured via `config/openclaw.config.js`, documented in `docs/WHATSAPP-BAILEYS-SETUP.md`
 - [ ] Confirmed `global.openai.gpt-5.6-luna` and `global.anthropic.claude-sonnet-5` cross-region profiles are invokable from the Gateway's exact AWS credentials/region
 - [ ] `OPENCLAW_GATEWAY_TOKEN` and other secrets provisioned in Coolify
 - [ ] BBX Chat backend wired to call `tasks.trigger("openclaw-task", ...)`
 - [ ] End-to-end smoke test against the live Trigger.dev instance (`server.pddt.in`)
+- [ ] WhatsApp account linked (QR scan) on the production deployment
 
 
 ## Troubleshooting

@@ -55,6 +55,28 @@ chown -R node:node "$OPENCLAW_HOME_DIR/.config" 2>/dev/null || true
 echo "[entrypoint] Generating OpenClaw config from config/models.yaml ..."
 gosu node node /app/config/openclaw.config.js
 
+# WhatsApp channel: install the OFFICIAL @openclaw/whatsapp plugin (Baileys
+# under the hood) at RUNTIME, not at image build time. Plugins install into
+# $OPENCLAW_STATE_DIR/extensions/<name> (confirmed: "Installing to
+# /home/node/.openclaw/extensions/whatsapp…"), which is the exact directory
+# docker-compose.yaml bind-mounts from the host. A build-time install would
+# be silently wiped out the moment that (initially empty) host volume
+# mounts over /home/node/.openclaw at container start -- so this must run
+# here, after the volume is live, and persists in the host directory across
+# restarts exactly like the WhatsApp session itself (see docs/WHATSAPP-BAILEYS-SETUP.md).
+# Guard with a directory check because `openclaw plugins install` exits
+# non-zero ("plugin already exists ... delete it first") on a second run,
+# which would otherwise abort this script under `set -e`.
+if [ "${OPENCLAW_CHANNEL_WHATSAPP_ENABLED:-1}" = "1" ]; then
+  if [ ! -d "$OPENCLAW_DIR/extensions/whatsapp" ]; then
+    echo "[entrypoint] Installing WhatsApp channel plugin (@openclaw/whatsapp) ..."
+    gosu node openclaw plugins install clawhub:@openclaw/whatsapp \
+      || echo "[entrypoint] WARNING: WhatsApp plugin install failed; continuing without it. See docs/WHATSAPP-BAILEYS-SETUP.md."
+  else
+    echo "[entrypoint] WhatsApp channel plugin already installed, skipping."
+  fi
+fi
+
 echo "[entrypoint] Starting as node: $*"
 exec gosu node "$@"
 

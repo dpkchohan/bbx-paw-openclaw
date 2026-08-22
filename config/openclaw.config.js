@@ -105,6 +105,65 @@ function providerId(tier) {
   return PROVIDER_ID_MAP[tier.provider] || tier.provider;
 }
 
+// -----------------------------------------------------------------------------
+// WhatsApp channel (official @openclaw/whatsapp plugin, Baileys under the
+// hood -- installed at runtime by docker/entrypoint.sh, NOT vendored here).
+// -----------------------------------------------------------------------------
+// This project deliberately does not hand-roll a Baileys client. OpenClaw
+// ships a production-ready WhatsApp channel (its own docs: "Status:
+// production-ready via WhatsApp Web (Baileys). The gateway owns the linked
+// session(s)"). Building a second, independent Baileys session here would
+// duplicate that functionality and could conflict with it (WhatsApp Web
+// only tolerates a limited number of linked devices for one number), and it
+// would violate this repo's own restriction against reimplementing
+// OpenClaw. See docs/WHATSAPP-BAILEYS-SETUP.md for the full linking/QR
+// workflow (openclaw channels login --channel whatsapp).
+//
+// Real schema confirmed via `openclaw config schema` (2026.7.1-2, plugin
+// @openclaw/whatsapp@2026.7.1): channels.whatsapp.{enabled, dmPolicy,
+// allowFrom, groupPolicy, groupAllowFrom, configWrites, ...} plus
+// channels.whatsapp.accounts.<id>.{enabled, authDir, dmPolicy, allowFrom, ...}.
+// There is no "autoReconnect" or "logMessages" key -- the plugin's
+// Baileys-backed connection controller reconnects automatically by design,
+// and channel activity is already covered by the Gateway's own structured
+// logs, so neither needs a config toggle.
+function buildWhatsAppChannelConfig(env) {
+  if (env.OPENCLAW_CHANNEL_WHATSAPP_ENABLED === "0") {
+    return { enabled: false };
+  }
+
+  const allowFrom = (env.OPENCLAW_WHATSAPP_ALLOW_FROM || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const config = {
+    enabled: true,
+    // "pairing" (default) queues an approval request for unknown senders
+    // instead of silently allowing everyone -- see docs/WHATSAPP-BAILEYS-SETUP.md.
+    dmPolicy: env.OPENCLAW_WHATSAPP_DM_POLICY || "pairing",
+    groupPolicy: env.OPENCLAW_WHATSAPP_GROUP_POLICY || "disabled",
+  };
+
+  if (allowFrom.length > 0) {
+    config.allowFrom = allowFrom;
+  }
+
+  // Session credentials (Baileys creds.json) persist under
+  // $OPENCLAW_STATE_DIR/credentials/whatsapp/<accountId>/ by default, which
+  // is already inside the bind-mounted .openclaw volume -- no extra Docker
+  // volume/path is needed for the session to survive container restarts.
+  // Set OPENCLAW_WHATSAPP_AUTH_DIR only to relocate it outside that default.
+  if (env.OPENCLAW_WHATSAPP_AUTH_DIR) {
+    config.accounts = {
+      default: { authDir: env.OPENCLAW_WHATSAPP_AUTH_DIR },
+    };
+  }
+
+  return config;
+}
+
+
 // Fixed origins this Gateway must always accept, regardless of env config:
 //   - openclaw.pddt.in: the Control UI / dashboard domain (see
 //     https://openclaw.pddt.in) that Coolify routes to this container.
@@ -233,6 +292,10 @@ function buildConfig(env) {
     models: {
       providers,
     },
+    channels: {
+      whatsapp: buildWhatsAppChannelConfig(env),
+    },
+
     // NOTE: OpenClaw's own control-plane/session state is always SQLite
     // (see docs/ARCHITECTURE.md "Storage" section) — it is NOT MongoDB.
     // MONGO_URI is consumed by our own trigger-jobs/openclaw-task.js for
