@@ -146,6 +146,52 @@ function buildPluginsConfig({ hasBedrockProvider, whatsappEnabled }) {
   return { allow, entries, bundledDiscovery: "compat" };
 }
 
+// -----------------------------------------------------------------------------
+// GitHub MCP server (official github/github-mcp-server, spawned as a plain
+// stdio process -- installed at build time by the Dockerfile as a prebuilt
+// Linux binary at /usr/local/bin/github-mcp-server, NOT via npm).
+// -----------------------------------------------------------------------------
+// The older `@modelcontextprotocol/server-github` npm package is deprecated
+// ("Package no longer supported", confirmed via `npm view
+// @modelcontextprotocol/server-github deprecated`). GitHub's own
+// `github/github-mcp-server` replaced it and only ships as a Docker image
+// or prebuilt per-OS/arch binaries -- no npm package. Docker-in-Docker
+// isn't available inside this container, so the Dockerfile downloads and
+// checksum-verifies the Linux x86_64 binary directly (see Dockerfile
+// comments), and this generator wires it into OpenClaw as a plain stdio
+// MCP server.
+//
+// Real schema confirmed via `openclaw config schema` (2026.7.1-2): the
+// correct top-level key is "mcp.servers.<name>" (a keyed object), NOT a
+// top-level "mcpServers" key (that shape is Claude Desktop's config
+// format, not OpenClaw's). Each entry accepts command/args/env/cwd for a
+// stdio server (confirmed against the schema's mcp.servers.additionalProperties
+// shape) -- exactly the same shape `openclaw mcp add --command --arg --env`
+// would write.
+function buildGitHubMcpServerConfig(env) {
+  const token = env.GITHUB_PERSONAL_ACCESS_TOKEN || "";
+
+  console.log(
+    `[openclaw.config] GitHub token set: ${!!token}`
+  );
+
+  if (!token) {
+    // No token configured -- omit the server entirely rather than writing
+    // a broken entry with no credentials. `openclaw mcp doctor` would flag
+    // a configured-but-unauthenticated server anyway.
+    return null;
+  }
+
+  return {
+    enabled: true,
+    command: "/usr/local/bin/github-mcp-server",
+    args: ["stdio"],
+    env: {
+      GITHUB_PERSONAL_ACCESS_TOKEN: token,
+    },
+  };
+}
+
 
 
 // -----------------------------------------------------------------------------
@@ -332,6 +378,7 @@ function buildConfig(env) {
     .map(([, tier]) => `${providerId(tier)}/${tier.model}`);
 
   const whatsappConfig = buildWhatsAppChannelConfig(env);
+  const githubMcpServerConfig = buildGitHubMcpServerConfig(env);
 
   const config = {
     gateway: {
@@ -410,6 +457,16 @@ function buildConfig(env) {
       whatsappEnabled: whatsappConfig.enabled !== false,
     }),
 
+    // GitHub MCP server (see buildGitHubMcpServerConfig above). Real schema
+    // key is mcp.servers.<name>, not a top-level "mcpServers" -- omitted
+    // entirely (mcp.servers stays {}) when GITHUB_PERSONAL_ACCESS_TOKEN is
+    // unset.
+    mcp: {
+      servers: githubMcpServerConfig
+        ? { github: githubMcpServerConfig }
+        : {},
+    },
+
     // NOTE: OpenClaw's own control-plane/session state is always SQLite
     // (see docs/ARCHITECTURE.md "Storage" section) — it is NOT MongoDB.
     // MONGO_URI is consumed by our own trigger-jobs/openclaw-task.js for
@@ -421,9 +478,23 @@ function buildConfig(env) {
     // memorySearch, which is set above.
   };
 
+  // Debug visibility: OpenClaw's real schema is config.mcp.servers, not a
+  // top-level config.mcpServers (that shape is Claude Desktop's config
+  // format, not OpenClaw's -- confirmed via `openclaw config schema`).
+  // config.mcpServers is logged anyway, exactly as requested, so it's
+  // visible in `docker logs` / Coolify's deployment logs that this key is
+  // always undefined on this generator's output -- the real data lives at
+  // config.mcp.servers, logged on the line below it.
+  console.log(
+    `[openclaw.config] mcpServers: ${JSON.stringify(config.mcpServers)}`
+  );
+  console.log(
+    `[openclaw.config] mcp.servers: ${JSON.stringify(config.mcp.servers)}`
+  );
 
   return config;
 }
+
 
 function toJson5(config) {
   // OpenClaw config is JSON5 but plain JSON is valid JSON5, so pretty JSON

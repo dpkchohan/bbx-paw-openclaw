@@ -43,6 +43,28 @@ RUN apt-get update && \
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev --no-audit --no-fund
 
+# GitHub MCP server (official github/github-mcp-server, Go binary). Only
+# distributed as a Docker image or prebuilt per-OS/arch binaries -- no npm
+# package (the older @modelcontextprotocol/server-github is deprecated:
+# "Package no longer supported", confirmed via `npm view ... deprecated`).
+# Docker-in-Docker isn't available inside this container, so we fetch the
+# published Linux x86_64 binary directly at build time and verify its
+# checksum against the release's official checksums file. Confirmed via a
+# live run: `github-mcp-server stdio` with GITHUB_PERSONAL_ACCESS_TOKEN set
+# prints "GitHub MCP Server running on stdio" and behaves identically to
+# the ghcr.io/github/github-mcp-server Docker image's `stdio` subcommand.
+# Bump GITHUB_MCP_SERVER_VERSION and the matching SHA256 (from that
+# release's *_checksums.txt) to upgrade.
+ARG GITHUB_MCP_SERVER_VERSION="1.10.1"
+ARG GITHUB_MCP_SERVER_LINUX_X86_64_SHA256="c2629e850a344275cfc5a1590acdfd8c11476a44b688812d460163768e05572d"
+RUN curl -fsSL -o /tmp/github-mcp-server.tar.gz \
+      "https://github.com/github/github-mcp-server/releases/download/v${GITHUB_MCP_SERVER_VERSION}/github-mcp-server_Linux_x86_64.tar.gz" && \
+    echo "${GITHUB_MCP_SERVER_LINUX_X86_64_SHA256}  /tmp/github-mcp-server.tar.gz" | sha256sum -c - && \
+    mkdir -p /tmp/github-mcp-server-extract && \
+    tar -xzf /tmp/github-mcp-server.tar.gz -C /tmp/github-mcp-server-extract && \
+    install -m 0755 /tmp/github-mcp-server-extract/github-mcp-server /usr/local/bin/github-mcp-server && \
+    rm -rf /tmp/github-mcp-server.tar.gz /tmp/github-mcp-server-extract
+
 COPY config ./config
 COPY docker/entrypoint.sh /usr/local/bin/openclaw-entrypoint.sh
 

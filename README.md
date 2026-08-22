@@ -27,6 +27,7 @@ Trigger.dev, and Coolify.
 - [Deploying to Coolify](#deploying-to-coolify)
 - [Trigger.dev integration](#triggerdev-integration)
 - [WhatsApp channel](#whatsapp-channel)
+- [GitHub MCP server](#github-mcp-server)
 - [Usage example](#usage-example)
 - [Status / what's implemented so far](#status--whats-implemented-so-far)
 - [Troubleshooting](#troubleshooting)
@@ -221,6 +222,20 @@ configured via `channels.whatsapp` in the generated `openclaw.json`
 Full setup, QR linking, headless-server QR access, and troubleshooting:
 [docs/WHATSAPP-BAILEYS-SETUP.md](docs/WHATSAPP-BAILEYS-SETUP.md).
 
+## GitHub MCP server
+
+The Gateway can also give the agent direct access to GitHub (repos, issues,
+PRs, Actions, etc.) via the **official** [github/github-mcp-server](https://github.com/github/github-mcp-server),
+run as a plain stdio process spawned by the Gateway itself — not the
+deprecated `@modelcontextprotocol/server-github` npm package. The
+Dockerfile downloads and checksum-verifies the published Linux x86_64
+binary at build time; `config/openclaw.config.js` wires it into OpenClaw's
+real `mcp.servers.github` config key (not the commonly-assumed but
+incorrect top-level `mcpServers`) whenever `GITHUB_PERSONAL_ACCESS_TOKEN`
+is set.
+
+Full setup and troubleshooting: [docs/GITHUB-MCP-SETUP.md](docs/GITHUB-MCP-SETUP.md).
+
 ## Usage example
 
 ```
@@ -242,11 +257,13 @@ User (BBX Chat): "Research NASA GSFC projects and create a summary report"
 - [x] `workflows/trigger-jobs/openclaw-task.js` — Trigger.dev v3 task calling the Gateway
 - [x] `docs/ARCHITECTURE.md`, `docs/SETUP.md`, `docs/DEPLOYMENT.md`
 - [x] WhatsApp channel — official `@openclaw/whatsapp` plugin (Baileys), installed at runtime, configured via `config/openclaw.config.js`, documented in `docs/WHATSAPP-BAILEYS-SETUP.md`
+- [x] GitHub MCP server — official `github/github-mcp-server` binary, checksum-verified at build time, configured via `config.mcp.servers.github`, documented in `docs/GITHUB-MCP-SETUP.md`
 - [ ] Confirmed `global.openai.gpt-5.6-luna` and `global.anthropic.claude-sonnet-5` cross-region profiles are invokable from the Gateway's exact AWS credentials/region
 - [ ] `OPENCLAW_GATEWAY_TOKEN` and other secrets provisioned in Coolify
 - [ ] BBX Chat backend wired to call `tasks.trigger("openclaw-task", ...)`
 - [ ] End-to-end smoke test against the live Trigger.dev instance (`server.pddt.in`)
 - [ ] WhatsApp account linked (QR scan) on the production deployment
+- [ ] `GITHUB_PERSONAL_ACCESS_TOKEN` provisioned in Coolify for the production deployment
 
 
 ## Troubleshooting
