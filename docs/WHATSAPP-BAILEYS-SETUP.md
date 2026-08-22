@@ -162,6 +162,7 @@ docker exec -it bbx-paw-openclaw gosu node openclaw channels login --channel wha
 | `loggedOut` in logs, channel stops responding permanently | The phone unlinked the device, or WhatsApp force-logged it out. There is no recovery short of a fresh QR scan — see "How to reset session" below. |
 | `plugin already exists: /home/node/.openclaw/extensions/whatsapp (delete it first)` during a manual `openclaw plugins install` | Expected/harmless — the entrypoint already guards against this by checking for the directory first; this error only appears if you run the install command yourself a second time. |
 | Config write conflicts (`Config overwrite: ... backup=openclaw.json.bak`) | Expected — `channels login` and `pairing approve` both write directly to `openclaw.json`. This repo's generator (`config/openclaw.config.js`) runs again on every container restart and regenerates the fields it owns (`enabled`, `dmPolicy`, `groupPolicy`, `allowFrom`) from `.env` every restart — keep `.env` as the source of truth for those. |
+| Gateway crash-loops with a schema/enum validation error on `channels.whatsapp` | An invalid `OPENCLAW_WHATSAPP_DM_POLICY` / `OPENCLAW_WHATSAPP_GROUP_POLICY` value (e.g. `"allow"` or `"ignore"`, neither of which is a real enum value) reached `openclaw.json`. `config/openclaw.config.js` validates both against OpenClaw's real schema on every run and normally falls back to a safe default and logs a `[openclaw.config] WARNING: ...` line instead of letting this happen — check `docker logs` / Coolify's deployment logs for that exact line, it names the bad env var and its value. Fix the value in `.env` / Coolify's environment editor to one of the allowed values below. |
 
 General diagnostics:
 
@@ -170,6 +171,23 @@ docker exec bbx-paw-openclaw gosu node openclaw channels list --all
 docker exec bbx-paw-openclaw gosu node openclaw doctor
 docker logs bbx-paw-openclaw --tail 200
 ```
+
+Look specifically for these two log lines, printed on every container start
+right before the Gateway itself starts (from `config/openclaw.config.js`):
+
+```
+[openclaw.config] WhatsApp env vars set: OPENCLAW_WHATSAPP_DM_POLICY="...", ...
+[openclaw.config] WhatsApp channels.whatsapp.dmPolicy="..." groupPolicy="..."
+```
+
+The first line shows every `OPENCLAW_WHATSAPP_*` / `OPENCLAW_CHANNEL_WHATSAPP_ENABLED`
+env var actually visible to the container (confirms what Coolify/`.env`
+really injected). The second line shows the exact values that were written
+into `openclaw.json`, after validation/fallback. If you ever see a
+`WARNING:` line between them, an invalid value was caught and replaced —
+fix the source env var rather than editing `openclaw.json` directly (it
+gets regenerated on every restart).
+
 
 ## How to reset the session (force a fresh QR)
 

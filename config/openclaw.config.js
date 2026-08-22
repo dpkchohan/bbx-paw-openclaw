@@ -127,6 +127,29 @@ function providerId(tier) {
 // Baileys-backed connection controller reconnects automatically by design,
 // and channel activity is already covered by the Gateway's own structured
 // logs, so neither needs a config toggle.
+const VALID_WHATSAPP_DM_POLICIES = ["pairing", "allowlist", "open", "disabled"];
+const VALID_WHATSAPP_GROUP_POLICIES = ["open", "disabled", "allowlist"];
+
+// Validates a candidate enum value against OpenClaw's real schema for this
+// field. Returns the candidate unchanged when valid; otherwise logs a loud,
+// unmissable warning (visible in `docker logs` / Coolify build+runtime
+// logs) and falls back to `fallback` so the Gateway never receives a value
+// that would make it reject the whole config at startup. This exists
+// specifically to catch bad values coming from .env / Coolify's env editor
+// (e.g. a stray OPENCLAW_WHATSAPP_DM_POLICY=allow or =ignore) BEFORE they
+// reach openclaw.json, since OpenClaw's schema validator has no fallback of
+// its own -- an invalid enum value there crashes the Gateway at boot.
+function validateEnumEnvValue({ envVarName, rawValue, allowedValues, fallback }) {
+  if (rawValue === undefined || rawValue === "") return fallback;
+  if (allowedValues.includes(rawValue)) return rawValue;
+  console.error(
+    `[openclaw.config] WARNING: ${envVarName}="${rawValue}" is not a valid value. ` +
+      `Allowed: ${allowedValues.join(", ")}. Falling back to "${fallback}". ` +
+      `Check .env / Coolify environment variables for this deployment.`
+  );
+  return fallback;
+}
+
 function buildWhatsAppChannelConfig(env) {
   if (env.OPENCLAW_CHANNEL_WHATSAPP_ENABLED === "0") {
     return { enabled: false };
@@ -137,13 +160,47 @@ function buildWhatsAppChannelConfig(env) {
     .map((s) => s.trim())
     .filter(Boolean);
 
+  // Debug visibility: print every OPENCLAW_WHATSAPP_* / OPENCLAW_CHANNEL_
+  // WHATSAPP_* env var that is actually set in this process, and the exact
+  // dmPolicy/groupPolicy values about to be written to openclaw.json. This
+  // runs on every container start (docker/entrypoint.sh calls this script
+  // before `openclaw gateway`), so it shows up in `docker logs` / Coolify's
+  // deployment logs immediately before any Gateway startup/crash output.
+  const relevantEnvKeys = Object.keys(env).filter(
+    (key) => key.startsWith("OPENCLAW_WHATSAPP_") || key === "OPENCLAW_CHANNEL_WHATSAPP_ENABLED"
+  );
+  console.log(
+    `[openclaw.config] WhatsApp env vars set: ${
+      relevantEnvKeys.length > 0
+        ? relevantEnvKeys.map((key) => `${key}=${JSON.stringify(env[key])}`).join(", ")
+        : "(none)"
+    }`
+  );
+
+  const dmPolicy = validateEnumEnvValue({
+    envVarName: "OPENCLAW_WHATSAPP_DM_POLICY",
+    rawValue: env.OPENCLAW_WHATSAPP_DM_POLICY,
+    allowedValues: VALID_WHATSAPP_DM_POLICIES,
+    fallback: "pairing",
+  });
+  const groupPolicy = validateEnumEnvValue({
+    envVarName: "OPENCLAW_WHATSAPP_GROUP_POLICY",
+    rawValue: env.OPENCLAW_WHATSAPP_GROUP_POLICY,
+    allowedValues: VALID_WHATSAPP_GROUP_POLICIES,
+    fallback: "disabled",
+  });
+  console.log(
+    `[openclaw.config] WhatsApp channels.whatsapp.dmPolicy="${dmPolicy}" groupPolicy="${groupPolicy}"`
+  );
+
   const config = {
     enabled: true,
     // "pairing" (default) queues an approval request for unknown senders
     // instead of silently allowing everyone -- see docs/WHATSAPP-BAILEYS-SETUP.md.
-    dmPolicy: env.OPENCLAW_WHATSAPP_DM_POLICY || "pairing",
-    groupPolicy: env.OPENCLAW_WHATSAPP_GROUP_POLICY || "disabled",
+    dmPolicy,
+    groupPolicy,
   };
+
 
   if (allowFrom.length > 0) {
     config.allowFrom = allowFrom;
