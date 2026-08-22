@@ -105,6 +105,49 @@ function providerId(tier) {
   return PROVIDER_ID_MAP[tier.provider] || tier.provider;
 }
 
+// Builds the top-level `plugins` config block that explicitly trusts every
+// non-bundled plugin this generator actually configures. Confirmed via a
+// live container boot: leaving plugins.allow unset makes the Gateway log
+// "plugins.allow is empty; discovered non-bundled plugins may auto-load:
+// amazon-bedrock (...), whatsapp (...). To trust them explicitly, set
+// plugins.allow in openclaw.json (e.g. "plugins": { "allow": [...] })"
+// on every start. Schema-confirmed via `openclaw config schema`:
+// plugins.allow is string[], plugins.entries.<id>.enabled is boolean.
+//
+// bundledDiscovery: "compat" is required alongside plugins.allow --
+// confirmed via a live `openclaw doctor` run: setting plugins.allow without
+// it triggers a "Legacy config keys detected: plugins.allow now gates
+// bundled provider discovery by default" warning, and (confirmed via
+// `openclaw plugins list` / `openclaw doctor`'s Plugins summary) drops
+// several optional bundled feature plugins this repo never uses -- browser
+// automation, Canvas, device pairing, file-transfer, local Ollama models,
+// phone control, and Talk voice -- from "enabled" to "disabled". None of
+// those are referenced anywhere in this repo (this Gateway only needs
+// Bedrock inference, memory-core for agents.defaults.memorySearch, and the
+// WhatsApp channel), so this is an acceptable, in fact leaner, result.
+// "compat" is the doctor-recommended setting to acknowledge and quiet that
+// warning; "allowlist" would keep the same stricter behavior without
+// quieting it. plugins.allow/entries below exist to trust the two
+// non-bundled (external) plugins this config actually configures.
+function buildPluginsConfig({ hasBedrockProvider, whatsappEnabled }) {
+
+  const allow = [];
+  const entries = {};
+
+  if (hasBedrockProvider) {
+    allow.push("amazon-bedrock");
+    entries["amazon-bedrock"] = { enabled: true };
+  }
+  if (whatsappEnabled) {
+    allow.push("whatsapp");
+    entries.whatsapp = { enabled: true };
+  }
+
+  return { allow, entries, bundledDiscovery: "compat" };
+}
+
+
+
 // -----------------------------------------------------------------------------
 // WhatsApp channel (official @openclaw/whatsapp plugin, Baileys under the
 // hood -- installed at runtime by docker/entrypoint.sh, NOT vendored here).
@@ -288,6 +331,7 @@ function buildConfig(env) {
     .filter(([name]) => name !== defaultTierName)
     .map(([, tier]) => `${providerId(tier)}/${tier.model}`);
 
+  const whatsappConfig = buildWhatsAppChannelConfig(env);
 
   const config = {
     gateway: {
@@ -350,8 +394,21 @@ function buildConfig(env) {
       providers,
     },
     channels: {
-      whatsapp: buildWhatsAppChannelConfig(env),
+      whatsapp: whatsappConfig,
     },
+    // Trust the non-bundled plugins this config actually configures.
+    // Without this, the Gateway logs a warning on every start:
+    // "plugins.allow is empty; discovered non-bundled plugins may
+    // auto-load: amazon-bedrock (...), whatsapp (...). To trust them
+    // explicitly, set plugins.allow in openclaw.json ..." -- confirmed via
+    // a live container boot. plugins.allow is the schema-confirmed
+    // allowlist (string[]); plugins.entries.<id>.enabled additionally
+    // force-enables each entry (also schema-confirmed: boolean). Built
+    // dynamically so it only lists plugins this exact config uses.
+    plugins: buildPluginsConfig({
+      hasBedrockProvider: bedrockModels.length > 0,
+      whatsappEnabled: whatsappConfig.enabled !== false,
+    }),
 
     // NOTE: OpenClaw's own control-plane/session state is always SQLite
     // (see docs/ARCHITECTURE.md "Storage" section) — it is NOT MongoDB.
@@ -363,6 +420,7 @@ function buildConfig(env) {
     // config lives per-agent at agents.defaults.memorySearch / agents.list[].
     // memorySearch, which is set above.
   };
+
 
   return config;
 }

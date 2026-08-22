@@ -24,13 +24,55 @@ this repo's `Dockerfile` — not simulated.
 | File | Change |
 | --- | --- |
 | `docker/entrypoint.sh` | Installs `@openclaw/whatsapp` from ClawHub at **container runtime** (after the volume mounts), idempotently, on every start |
-| `config/openclaw.config.js` | Generates the real `channels.whatsapp` config block (`enabled`, `dmPolicy`, `groupPolicy`, `allowFrom`, optional `accounts.default.authDir`) |
+| `config/openclaw.config.js` | Generates the real `channels.whatsapp` config block (`enabled`, `dmPolicy`, `groupPolicy`, `allowFrom`, optional `accounts.default.authDir`), plus a `plugins.allow` / `plugins.entries` block that explicitly trusts the `amazon-bedrock` and `whatsapp` external plugins |
 | `.env.example` | New optional `OPENCLAW_CHANNEL_WHATSAPP_ENABLED` / `OPENCLAW_WHATSAPP_*` vars |
 
 No `src/channels/whatsapp.js`, no `@whiskeysockets/baileys`/`qrcode-terminal`
 npm dependency, and no changes to `src/index.js` (this repo has no such
 file — OpenClaw's own `openclaw gateway` process is the entire runtime; see
 `docker/entrypoint.sh`'s `CMD`).
+
+## Why "plugins: { allow, entries }" is in the generated config
+
+Confirmed via a live container boot: without it, the Gateway logs this
+warning on every start (the exact wording OpenClaw used, close to but not
+identical to earlier reports of this issue):
+
+```
+[plugins] plugins.allow is empty; discovered non-bundled plugins may
+auto-load: amazon-bedrock (...), whatsapp (...). To trust them explicitly,
+set plugins.allow in openclaw.json (e.g. "plugins": { "allow":
+["amazon-bedrock", "whatsapp"] })
+```
+
+`config/openclaw.config.js` now generates:
+
+```json5
+{
+  plugins: {
+    allow: ["amazon-bedrock", "whatsapp"],
+    entries: {
+      "amazon-bedrock": { enabled: true },
+      whatsapp: { enabled: true },
+    },
+    bundledDiscovery: "compat",
+  },
+}
+```
+
+`bundledDiscovery: "compat"` is required alongside `plugins.allow` --
+confirmed via a live `openclaw doctor` run: setting `plugins.allow` without
+it triggers a second warning ("Legacy config keys detected: plugins.allow
+now gates bundled provider discovery by default") and, confirmed via
+`openclaw plugins list` / `openclaw doctor`'s Plugins summary, silently
+disables several optional **bundled** feature plugins this repo never
+uses: browser automation, Canvas, device pairing, file-transfer, local
+Ollama models, phone control, and Talk voice. None of those are referenced
+anywhere in this repo -- this Gateway only needs Bedrock inference,
+`memory-core` (for `agents.defaults.memorySearch`), and the WhatsApp
+channel -- so losing them is an acceptable, in fact leaner, result.
+`bundledDiscovery: "compat"` is the doctor-recommended setting to
+acknowledge and quiet that second warning.
 
 ## Why the plugin installs at runtime, not in the Dockerfile
 
