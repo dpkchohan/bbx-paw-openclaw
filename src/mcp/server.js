@@ -1,5 +1,6 @@
 const http = require("node:http");
 const { randomUUID } = require("node:crypto");
+const { z } = require("zod");
 const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { StreamableHTTPServerTransport } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
 const { tools, invoke } = require("./tools.js");
@@ -9,6 +10,15 @@ const host = process.env.MCP_HOST || "0.0.0.0";
 const authToken = process.env.MCP_AUTH_TOKEN || "";
 const sessions = new Map();
 
+const schemas = {
+  execute_dev_task: { prompt: z.string().min(1), repo_url: z.string().url().optional() },
+  run_workflow: { workflow_name: z.string().min(1), params: z.record(z.any()).optional() },
+  list_repos: {},
+  create_pr: { repo: z.string().min(1), title: z.string().min(1), description: z.string().optional(), changes: z.array(z.object({ path: z.string().min(1), content: z.string() })) },
+  get_status: {},
+  execute_command: { command: z.string().min(1) },
+};
+
 function authorized(request) {
   return !authToken || request.headers.authorization === `Bearer ${authToken}`;
 }
@@ -16,7 +26,7 @@ function authorized(request) {
 function createServer() {
   const server = new McpServer({ name: "bbx-paw-openclaw", version: "0.1.0" });
   for (const [name, definition] of Object.entries(tools)) {
-    server.tool(name, definition.description, definition.inputSchema, async (args) => {
+    server.tool(name, definition.description, schemas[name], async (args) => {
       const response = await invoke(name, args);
       return { content: [{ type: "text", text: JSON.stringify(response) }], structuredContent: response };
     });
@@ -45,7 +55,7 @@ const httpServer = http.createServer((request, response) => {
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
   if (request.url === "/healthz" && request.method === "GET") { response.writeHead(200, { "content-type": "application/json" }); response.end(JSON.stringify({ status: "ok", service: "bbx-paw-openclaw-mcp" })); return; }
-  if (request.url === "/mcp" && ["GET", "POST", "DELETE"].includes(request.method)) { handleMcp(request, response).catch((error) => { if (!response.headersSent) response.writeHead(500, { "content-type": "application/json" }); response.end(JSON.stringify({ error: "MCP request failed" })); console.error("[mcp]", error); }); return; }
+  if (request.url === "/mcp" && ["GET", "POST", "DELETE"].includes(request.method)) { handleMcp(request, response).catch((error) => { if (!response.headersSent) response.writeHead(500, { "content-type": "application/json" }); if (!response.writableEnded) response.end(JSON.stringify({ error: "MCP request failed" })); console.error("[mcp]", error); }); return; }
   response.writeHead(404, { "content-type": "application/json" }); response.end(JSON.stringify({ error: "Not found" }));
 });
 
