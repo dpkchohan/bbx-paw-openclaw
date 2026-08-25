@@ -43,6 +43,10 @@ RUN apt-get update && \
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev --no-audit --no-fund
 
+# Ensure application source (mcp server, etc.) is present in the image so
+# runtime commands like `npm run mcp:server` can find src/mcp/server.js.
+COPY src/ ./src
+
 # GitHub MCP server (official github/github-mcp-server, Go binary). Only
 # distributed as a Docker image or prebuilt per-OS/arch binaries -- no npm
 # package (the older @modelcontextprotocol/server-github is deprecated:
@@ -102,7 +106,3 @@ EXPOSE 18789
 
 ENTRYPOINT ["tini", "-s", "--", "/usr/local/bin/openclaw-entrypoint.sh"]
 CMD ["openclaw", "gateway", "--bind", "lan", "--port", "18789"]
-
-
-
-
