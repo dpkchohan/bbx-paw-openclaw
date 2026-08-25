@@ -270,7 +270,15 @@ User (BBX Chat): "Research NASA GSFC projects and create a summary report"
 
 See [docs/SETUP.md](docs/SETUP.md#troubleshooting) and
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#troubleshooting). Quick checks:
+Create docs/MCP_SERVER_DEPLOYMENT.md
 
+Document:
+- MCP server now runs on port 3001 (was gateway on 18789)
+- What changed: docker-compose.yaml runs "npm run mcp:server"
+- Port mapping: 3001:3001
+- Health check: GET /healthz
+- Coolify routing: Must point to port 3001
+- How to revert (if needed)
 ```bash
 openclaw doctor                 # config/health issues
 openclaw gateway status         # is the Gateway running?
