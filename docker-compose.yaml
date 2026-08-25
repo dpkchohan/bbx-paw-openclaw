@@ -14,7 +14,7 @@ services:
     container_name: bbx-paw-openclaw
     restart: unless-stopped
     init: true
-    command: npm run mcp:server
+    command: ["npm", "run", "mcp:server"]
     env_file:
       - path: .env
         required: false
