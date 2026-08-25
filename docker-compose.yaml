@@ -61,7 +61,7 @@ services:
       - "${OPENCLAW_WORKSPACE_DIR:-./workspace}:/home/node/.openclaw/workspace"
       - "${OPENCLAW_AUTH_PROFILE_SECRET_DIR:-./.openclaw-auth-profile-secrets}:/home/node/.config/openclaw"
     ports:
-      - "${MCP_PORT:-3001}:3001"
+      - "3001:3001"
     cap_drop:
       - NET_RAW
       - NET_ADMIN
