@@ -3,8 +3,8 @@
 # =============================================================================
 # Deploy target: Coolify, same EC2 host as BBX Chat, as a separate container.
 # Coolify reads this file directly (Docker Compose deployment type) and
-# injects the environment variables you configure in its UI, which map to
-# the ${VAR} references below (see .env.example for the full list).
+# injects the environment variables you configure in its UI, which map to the
+# ${VAR} references below (see .env.example for the full list).
 # =============================================================================
 
 services:
@@ -14,6 +14,7 @@ services:
     container_name: bbx-paw-openclaw
     restart: unless-stopped
     init: true
+    command: npm run mcp:server
     env_file:
       - path: .env
         required: false
@@ -60,7 +61,7 @@ services:
       - "${OPENCLAW_WORKSPACE_DIR:-./workspace}:/home/node/.openclaw/workspace"
       - "${OPENCLAW_AUTH_PROFILE_SECRET_DIR:-./.openclaw-auth-profile-secrets}:/home/node/.config/openclaw"
     ports:
-      - "${OPENCLAW_PORT:-18789}:18789"
+      - "${MCP_PORT:-3001}:3001"
     cap_drop:
       - NET_RAW
       - NET_ADMIN
@@ -69,7 +70,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18789/healthz"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/healthz"]
       interval: 30s
       timeout: 5s
       retries: 5
