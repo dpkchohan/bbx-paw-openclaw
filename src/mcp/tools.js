@@ -37,25 +37,57 @@ function parseRepo(repo) {
   return { owner, name };
 }
 
-async function trigger(path, body) {
+function triggerAuth() {
   const base = process.env.TRIGGER_API_URL;
   const key = process.env.TRIGGER_SECRET_KEY || process.env.TRIGGER_API_KEY;
   if (!base || !key) throw new Error("TRIGGER_API_URL and TRIGGER_SECRET_KEY are required");
-  const response = await fetch(`${base.replace(/\/$/, "")}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify(body || {}),
-  });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`Trigger.dev ${response.status}: ${text.slice(0, 1000)}`);
-  return text ? JSON.parse(text) : {};
+  return { base: base.replace(/\/$/, ""), key };
 }
 
-async function executeDevTask({ prompt, repo_url }) {
-  if (process.env.TRIGGER_API_URL && (process.env.TRIGGER_SECRET_KEY || process.env.TRIGGER_API_KEY)) {
-    const data = await trigger("/api/v1/tasks/trigger", { taskIdentifier: "openclaw-task", payload: { prompt, repo_url } });
-    return result("in_progress", data, "Task submitted to Trigger.dev");
+async function parseTriggerResponse(response, url) {
+  const text = await response.text();
+  const contentType = response.headers.get("content-type") || "";
+  if (/text\/html/i.test(contentType) || /^\s*<(!doctype|html)/i.test(text)) {
+    throw new Error(`Trigger.dev ${response.status} at ${url} returned HTML instead of JSON (likely a wrong API path or the webapp 404 page)`);
   }
+  let body;
+  try { body = text ? JSON.parse(text) : {}; } catch { throw new Error(`Trigger.dev ${response.status} at ${url} returned a non-JSON response: ${text.slice(0, 1000)}`); }
+  if (!response.ok) throw new Error(`Trigger.dev ${response.status}: ${json(body).slice(0, 1000)}`);
+  return body;
+}
+
+// Trigger.dev v4 self-hosted contract:
+//   POST {TRIGGER_API_URL}/api/v1/tasks/{taskId}/trigger
+//   Headers: Authorization: Bearer <key>, Content-Type: application/json
+//   Body: { "payload": { ... } }
+async function trigger(taskId, payload) {
+  const { base, key } = triggerAuth();
+  const url = `${base}/api/v1/tasks/${encodeURIComponent(taskId)}/trigger`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    body: JSON.stringify({ payload: payload || {} }),
+  });
+  return parseTriggerResponse(response, url);
+}
+
+// GET {TRIGGER_API_URL}/api/v1/runs/{runId} — poll a previously triggered run.
+async function getRun(runId) {
+  const { base, key } = triggerAuth();
+  const url = `${base}/api/v1/runs/${encodeURIComponent(runId)}`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${key}` },
+  });
+  return parseTriggerResponse(response, url);
+}
+
+async function executeDevTaskViaTrigger({ prompt, repo_url }) {
+  const data = await trigger("openclaw-task", { prompt, repo_url });
+  return result("in_progress", data, "Task submitted to Trigger.dev");
+}
+
+async function executeDevTaskViaGateway({ prompt, repo_url }) {
   const base = process.env.OPENCLAW_GATEWAY_URL || `http://127.0.0.1:${process.env.OPENCLAW_PORT || 18789}`;
   const headers = { "Content-Type": "application/json" };
   if (process.env.OPENCLAW_GATEWAY_TOKEN) headers.Authorization = `Bearer ${process.env.OPENCLAW_GATEWAY_TOKEN}`;
@@ -67,8 +99,19 @@ async function executeDevTask({ prompt, repo_url }) {
   return result("success", data.choices?.[0]?.message?.content || data, "OpenClaw Gateway completed the task");
 }
 
+// The OpenClaw gateway is the primary execution path for execute_dev_task.
+// Trigger.dev is only used when explicitly opted into via
+// PREFER_TRIGGER_FOR_DEV_TASK="true" (kept behind this flag since there is
+// no "openclaw-task" deployed on the Trigger.dev instance yet).
+async function executeDevTask({ prompt, repo_url }) {
+  if (process.env.PREFER_TRIGGER_FOR_DEV_TASK === "true") {
+    return executeDevTaskViaTrigger({ prompt, repo_url });
+  }
+  return executeDevTaskViaGateway({ prompt, repo_url });
+}
+
 async function runWorkflow({ workflow_name, params = {} }) {
-  const data = await trigger("/api/v1/tasks/trigger", { taskIdentifier: workflow_name, payload: params });
+  const data = await trigger(workflow_name, params);
   return result("in_progress", data, `Workflow ${workflow_name} submitted`);
 }
 
@@ -133,4 +176,4 @@ async function invoke(name, args) {
   try { return await tool.handler(args || {}); } catch (error) { return result("error", "Tool execution failed", error.message); }
 }
 
-module.exports = { tools, invoke };
+module.exports = { tools, invoke, getRun };
