@@ -15,6 +15,7 @@
     "gateway": "openclaw gateway --bind lan --port ${OPENCLAW_PORT:-18789}",
     "gateway:status": "openclaw gateway status",
     "models:list": "openclaw models list",
+    "mcp:server": "node src/mcp/server.js",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
@@ -23,6 +24,7 @@
     "trigger:deploy": "npx trigger.dev@latest deploy"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@trigger.dev/sdk": "^3.3.17",
     "dotenv": "^16.4.5",
     "js-yaml": "^4.1.0",
