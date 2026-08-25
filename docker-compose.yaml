@@ -9,16 +9,15 @@
 
 services:
   openclaw:
-    build: .
-    image: ${OPENCLAW_IMAGE:-bbx-paw-openclaw:local}
+    build: &openclaw-build .
+    image: &openclaw-image ${OPENCLAW_IMAGE:-bbx-paw-openclaw:local}
     container_name: bbx-paw-openclaw
     restart: unless-stopped
     init: true
-    command: ["npm", "run", "mcp:server"]
-    env_file:
+    env_file: &openclaw-env-file
       - path: .env
         required: false
-    environment:
+    environment: &openclaw-environment
       HOME: /home/node
       OPENCLAW_HOME: /home/node
       TERM: xterm-256color
@@ -42,7 +41,7 @@ services:
       MONGO_URI: ${MONGO_URI:-}
       MONGO_DB_NAME: ${MONGO_DB_NAME:-bbx_chat}
       MONGO_PAW_JOBS_COLLECTION: ${MONGO_PAW_JOBS_COLLECTION:-paw_jobs}
-    volumes:
+    volumes: &openclaw-volumes
       # Bind-mount host directories for persistent OpenClaw state, workspace
       # files, and auth secrets. These are intentionally host bind mounts
       # (not named Docker volumes) so their contents stay directly browsable
@@ -61,7 +60,7 @@ services:
       - "${OPENCLAW_WORKSPACE_DIR:-./workspace}:/home/node/.openclaw/workspace"
       - "${OPENCLAW_AUTH_PROFILE_SECRET_DIR:-./.openclaw-auth-profile-secrets}:/home/node/.config/openclaw"
     ports:
-      - "3001:3001"
+      - "18789:18789"
     cap_drop:
       - NET_RAW
       - NET_ADMIN
@@ -70,11 +69,34 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/healthz"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18789/readyz"]
       interval: 30s
       timeout: 5s
       retries: 5
       start_period: 20s
     labels:
       # Coolify reverse-proxy hints; adjust the domain in the Coolify UI.
+      - "coolify.managed=true"
+
+  mcp:
+    build: *openclaw-build
+    image: *openclaw-image
+    container_name: bbx-paw-openclaw-mcp
+    command: ["npm", "run", "mcp:server"]
+    depends_on:
+      - openclaw
+    restart: unless-stopped
+    init: true
+    env_file: *openclaw-env-file
+    environment: *openclaw-environment
+    volumes: *openclaw-volumes
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    labels:
       - "coolify.managed=true"
