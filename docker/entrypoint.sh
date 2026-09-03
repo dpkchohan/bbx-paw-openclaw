@@ -77,6 +77,26 @@ if [ "${OPENCLAW_CHANNEL_WHATSAPP_ENABLED:-1}" = "1" ]; then
   fi
 fi
 
+# Run OpenClaw's self-healing state/config migration BEFORE starting the
+# gateway. The .openclaw state/workspace directories are persistent bind
+# mounts (see docker-compose.yaml), so they accumulate on-disk state across
+# image upgrades. When a newer OpenClaw binary detects a legacy on-disk
+# workspace/session layout it refuses to boot the gateway ("Legacy workspace
+# setup state requires migration ... run openclaw doctor --fix"), which
+# trips the restart-loop breaker and crash-loops the container forever until
+# someone runs this manually. Running it here makes every container start
+# self-healing, exactly like the ownership/permission fix-ups above.
+# Non-fatal: `set -e` is relaxed for this single call so a doctor failure
+# (e.g. nothing to migrate) never blocks the actual gateway from starting.
+echo "[entrypoint] Running OpenClaw doctor --fix (state/workspace migration) ..."
+set +e
+gosu node openclaw doctor --fix
+DOCTOR_EXIT=$?
+set -e
+if [ "$DOCTOR_EXIT" -ne 0 ]; then
+  echo "[entrypoint] WARNING: openclaw doctor --fix exited with code $DOCTOR_EXIT; continuing anyway."
+fi
+
 echo "[entrypoint] Starting as node: $*"
 exec gosu node "$@"
 
