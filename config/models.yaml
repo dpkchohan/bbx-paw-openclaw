@@ -77,9 +77,9 @@ tiers:
 
   tier3_coding:
     label: "Tier 3 - Coding / analysis"
-    name: "Claude Haiku 4.6"
+    name: "Claude Haiku 4.5"
     provider: bedrock
-    model: anthropic.claude-haiku-4-6-20250514-v1:0
+    model: anthropic.claude-haiku-4-5-20241022-v1:0
     inputCostPerMillionTokensUsd: 0.80
     outputCostPerMillionTokensUsd: 4.00
     contextWindow: 200000
