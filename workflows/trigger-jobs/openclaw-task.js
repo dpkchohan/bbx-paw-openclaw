@@ -45,7 +45,7 @@ const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 const TIER_MODEL_REF = {
   cheap: `amazon-bedrock/${process.env.MODEL_CHEAP || "us.amazon.nova-pro-v1:0"}`,
   default: `amazon-bedrock/${process.env.MODEL_DEFAULT || "global.openai.gpt-5.6-luna"}`,
-  coding: `amazon-bedrock/${process.env.MODEL_CODING || "anthropic.claude-haiku-4-6-20250514-v1:0"}`,
+  coding: `amazon-bedrock/${process.env.MODEL_CODING || "anthropic.claude-haiku-4-5-20241022-v1:0"}`,
   critical: `amazon-bedrock/${process.env.MODEL_CRITICAL || "global.anthropic.claude-sonnet-5"}`,
 };
 
