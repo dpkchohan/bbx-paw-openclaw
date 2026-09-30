@@ -39,6 +39,7 @@
 "use strict";
 
 const fs = require("fs");
+const net = require("net");
 const path = require("path");
 const os = require("os");
 require("dotenv").config();
@@ -338,6 +339,40 @@ function buildAllowedOrigins(env) {
   return Array.from(new Set([...fixedOrigins, ...extraOrigins]));
 }
 
+function isValidIpOrCidr(value) {
+  const separator = value.indexOf("/");
+  if (separator === -1) return net.isIP(value) !== 0;
+  if (value.indexOf("/", separator + 1) !== -1) return false;
+
+  const address = value.slice(0, separator);
+  const prefix = value.slice(separator + 1);
+  const version = net.isIP(address);
+  if (!version || !/^\d+$/.test(prefix)) return false;
+
+  const prefixLength = Number(prefix);
+  const maximum = version === 4 ? 32 : 128;
+  return prefixLength >= 0 && prefixLength <= maximum;
+}
+
+function buildTrustedProxies(env) {
+  const raw = env.OPENCLAW_TRUSTED_PROXIES;
+  if (raw === undefined || raw.trim() === "") return undefined;
+
+  const trustedProxies = raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const invalid = trustedProxies.find((value) => !isValidIpOrCidr(value));
+
+  if (invalid) {
+    throw new Error(
+      `[openclaw.config] OPENCLAW_TRUSTED_PROXIES contains an invalid IP/CIDR: "${invalid}".`
+    );
+  }
+
+  return trustedProxies;
+}
+
 
 
 
@@ -379,12 +414,14 @@ function buildConfig(env) {
 
   const whatsappConfig = buildWhatsAppChannelConfig(env);
   const githubMcpServerConfig = buildGitHubMcpServerConfig(env);
+  const trustedProxies = buildTrustedProxies(env);
 
   const config = {
     gateway: {
       mode: "local",
       bind: env.OPENCLAW_GATEWAY_BIND || "lan",
       port: Number(env.OPENCLAW_PORT || 18789),
+      ...(trustedProxies ? { trustedProxies } : {}),
       auth: {
         token: "${OPENCLAW_GATEWAY_TOKEN}",
       },
