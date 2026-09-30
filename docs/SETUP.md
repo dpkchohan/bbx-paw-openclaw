@@ -5,7 +5,7 @@
 This project installs OpenClaw exactly as published upstream:
 
 ```bash
-npm install -g openclaw@latest --allow-scripts=openclaw
+npm install -g openclaw@2026.8.2 --allow-scripts=openclaw
 ```
 
 (`--allow-scripts=openclaw` is required on npm 12 / npm 11.16+ to allow
@@ -36,7 +36,7 @@ cp .env.example .env
 # edit .env: AWS_*, OPENCLAW_GATEWAY_TOKEN, MONGO_URI, TRIGGER_*, etc.
 
 npm install
-npm run setup                 # npm install -g openclaw@latest
+npm run setup                 # npm install -g openclaw@2026.8.2
 npm run generate:config       # writes ~/.openclaw/openclaw.json from config/models.yaml
 openclaw onboard --install-daemon
 openclaw gateway status

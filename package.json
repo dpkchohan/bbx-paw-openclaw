@@ -10,7 +10,7 @@
   },
   "scripts": {
     "start": "npm run gateway",
-    "setup": "npm install -g openclaw@latest --allow-scripts=openclaw",
+    "setup": "npm install -g openclaw@2026.8.2 --allow-scripts=openclaw",
     "generate:config": "node config/openclaw.config.js",
     "onboard": "openclaw onboard --install-daemon",
     "gateway": "openclaw gateway --bind lan --port ${OPENCLAW_PORT:-18789}",

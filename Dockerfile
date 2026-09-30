@@ -35,7 +35,7 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl tini gosu ca-certificates && \
     rm -rf /var/lib/apt/lists/* && \
-    npm install -g openclaw@latest --allow-scripts=openclaw && \
+    npm install -g openclaw@2026.8.2 --allow-scripts=openclaw && \
     npm cache clean --force
 
 # Copy only what the config generator + entrypoint need. Application code
