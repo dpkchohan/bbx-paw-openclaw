@@ -193,6 +193,71 @@ function buildGitHubMcpServerConfig(env) {
   };
 }
 
+// -----------------------------------------------------------------------------
+// Hatchable MCP server (official hosted full-stack app platform -- a REMOTE
+// Streamable HTTP endpoint, NOT an npm/stdio package). Confirmed via the
+// official connector repo, github.com/Woobox/hatchable-mcp:
+//   endpoint:   https://hatchable.com/mcp
+//   transport:  Streamable HTTP (MCP 2025-03-26)
+//   auth:       OAuth 2.1 with PKCE + DCR; documented Bearer-token fallback
+//               for clients (like this one) that only support static headers.
+// -----------------------------------------------------------------------------
+// The Authorization header is written as the literal template string
+// "Bearer ${HATCHABLE_TOKEN}", NOT the resolved secret value. OpenClaw
+// resolves "${ENV_VAR}" placeholders from the process environment at
+// runtime -- the exact same pattern already used for gateway.auth.token
+// above -- so the real token is never embedded in openclaw.json on disk.
+// This also makes the entry durable: unlike a manually-set literal value
+// (which `openclaw mcp set`/`config set` would write directly into the
+// JSON file), this generator-built entry survives every container restart,
+// since docker/entrypoint.sh regenerates openclaw.json on every start.
+function buildHatchableMcpServerConfig(env) {
+  const hasToken = Boolean(env.HATCHABLE_TOKEN);
+
+  console.log(
+    `[openclaw.config] Hatchable token set: ${hasToken}`
+  );
+
+  if (!hasToken) {
+    // No token configured -- omit the server entirely rather than writing
+    // a broken entry with no credentials.
+    return null;
+  }
+
+  return {
+    url: "https://hatchable.com/mcp",
+    transport: "streamable-http",
+    headers: {
+      Authorization: "Bearer ${HATCHABLE_TOKEN}",
+    },
+  };
+}
+
+// Redacts credential-shaped fields (env values, header values) before any
+// mcp.servers object is logged. Debug visibility into *which* servers are
+// configured and whether their credential fields are set is useful in
+// `docker logs` / Coolify's deployment logs; the literal secret values are
+// not -- confirmed the hard way: a prior version of this generator logged
+// the raw mcp.servers object directly, which printed live tokens in
+// plaintext on every container start.
+function redactMcpServerSecrets(servers) {
+  const redacted = {};
+  for (const [name, server] of Object.entries(servers || {})) {
+    redacted[name] = { ...server };
+    if (redacted[name].env) {
+      redacted[name].env = Object.fromEntries(
+        Object.keys(redacted[name].env).map((key) => [key, "<redacted>"])
+      );
+    }
+    if (redacted[name].headers) {
+      redacted[name].headers = Object.fromEntries(
+        Object.keys(redacted[name].headers).map((key) => [key, "<redacted>"])
+      );
+    }
+  }
+  return redacted;
+}
+
 
 
 // -----------------------------------------------------------------------------
@@ -414,6 +479,7 @@ function buildConfig(env) {
 
   const whatsappConfig = buildWhatsAppChannelConfig(env);
   const githubMcpServerConfig = buildGitHubMcpServerConfig(env);
+  const hatchableMcpServerConfig = buildHatchableMcpServerConfig(env);
   const trustedProxies = buildTrustedProxies(env);
 
   const config = {
@@ -494,14 +560,15 @@ function buildConfig(env) {
       whatsappEnabled: whatsappConfig.enabled !== false,
     }),
 
-    // GitHub MCP server (see buildGitHubMcpServerConfig above). Real schema
-    // key is mcp.servers.<name>, not a top-level "mcpServers" -- omitted
-    // entirely (mcp.servers stays {}) when GITHUB_PERSONAL_ACCESS_TOKEN is
-    // unset.
+    // MCP servers (see buildGitHubMcpServerConfig / buildHatchableMcpServerConfig
+    // above). Real schema key is mcp.servers.<name>, not a top-level
+    // "mcpServers" -- each entry is omitted entirely when its required
+    // credential env var is unset.
     mcp: {
-      servers: githubMcpServerConfig
-        ? { github: githubMcpServerConfig }
-        : {},
+      servers: {
+        ...(githubMcpServerConfig ? { github: githubMcpServerConfig } : {}),
+        ...(hatchableMcpServerConfig ? { hatchable: hatchableMcpServerConfig } : {}),
+      },
     },
 
     // NOTE: OpenClaw's own control-plane/session state is always SQLite
@@ -526,7 +593,7 @@ function buildConfig(env) {
     `[openclaw.config] mcpServers: ${JSON.stringify(config.mcpServers)}`
   );
   console.log(
-    `[openclaw.config] mcp.servers: ${JSON.stringify(config.mcp.servers)}`
+    `[openclaw.config] mcp.servers: ${JSON.stringify(redactMcpServerSecrets(config.mcp.servers))}`
   );
 
   return config;
