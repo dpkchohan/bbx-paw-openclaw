@@ -31,7 +31,21 @@ services:
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
       OPENCLAW_TRUSTED_PROXIES: ${OPENCLAW_TRUSTED_PROXIES:-}
       OPENCLAW_TZ: ${OPENCLAW_TZ:-UTC}
-      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-http://openclaw:18789}
+      # Deliberately EMPTY for the openclaw (Gateway) service. This anchor is
+      # shared with the mcp sidecar, which does need
+      # OPENCLAW_GATEWAY_URL=http://openclaw:18789 -- see the mcp service's
+      # override below. But inside the Gateway container itself, a non-empty
+      # OPENCLAW_GATEWAY_URL makes every `openclaw` CLI/agent call in that
+      # container (Coolify terminal, entrypoint, system-agent inference
+      # probe) treat the Gateway as a REMOTE one and abort with
+      # "SECURITY ERROR: Gateway URL http://openclaw:18789 uses plaintext
+      # ws:// to a non-loopback address". Result: the system agent's
+      # inference probe fails in ~7ms ("setup_inference_probe_failed") and
+      # surfaces as SystemAgentInferenceUnavailableError even though Bedrock
+      # itself is healthy. `environment:` takes precedence over `env_file:`,
+      # so this also neutralises OPENCLAW_GATEWAY_URL coming from the
+      # Coolify-written .env, which the mcp sidecar legitimately needs.
+      OPENCLAW_GATEWAY_URL: ""
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
@@ -90,7 +104,12 @@ services:
     restart: unless-stopped
     init: true
     env_file: *openclaw-env-file
-    environment: *openclaw-environment
+    environment:
+      <<: *openclaw-environment
+      # The MCP sidecar reaches the Gateway over the compose network, so it
+      # (unlike the Gateway container itself) needs the service URL. Must
+      # not fall back to loopback: 127.0.0.1 would be the mcp container.
+      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-http://openclaw:18789}
     volumes: *openclaw-volumes
     ports:
       - "3001:3001"
