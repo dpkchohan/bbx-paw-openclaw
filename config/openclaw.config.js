@@ -130,7 +130,7 @@ function providerId(tier) {
 // warning; "allowlist" would keep the same stricter behavior without
 // quieting it. plugins.allow/entries below exist to trust the two
 // non-bundled (external) plugins this config actually configures.
-function buildPluginsConfig({ hasBedrockProvider, whatsappEnabled }) {
+function buildPluginsConfig({ hasBedrockProvider, whatsappEnabled, webSearchPluginId }) {
 
   const allow = [];
   const entries = {};
@@ -143,8 +143,32 @@ function buildPluginsConfig({ hasBedrockProvider, whatsappEnabled }) {
     allow.push("whatsapp");
     entries.whatsapp = { enabled: true };
   }
+  // External web-search provider plugin (installed at runtime by
+  // docker/entrypoint.sh). Must be in plugins.allow, otherwise OpenClaw
+  // reports "Web search unavailable: blocked by allowlist" -- allow is an
+  // exclusive list once non-empty, so every non-bundled plugin we use has
+  // to be listed here.
+  if (webSearchPluginId) {
+    allow.push(webSearchPluginId);
+    entries[webSearchPluginId] = { enabled: true };
+  }
 
   return { allow, entries, bundledDiscovery: "compat" };
+}
+
+// Web search provider. Default "duckduckgo": key-free, official
+// @openclaw/duckduckgo-plugin, so no API key or credential is needed.
+// Set OPENCLAW_WEB_SEARCH_PROVIDER=none to disable web search entirely.
+// Providers shipped with the core image (gemini/grok/minimax/ollama) need
+// API keys this deployment does not have, and "gemini" is what the setup
+// wizard offered -- its install fails ("web search provider gemini
+// installation failed") because it is bundled, not installable, and has no
+// key. Any other value must be a plugin id that is installed AND listed in
+// plugins.allow; only duckduckgo is wired up for auto-install.
+function resolveWebSearchProvider(env) {
+  const raw = (env.OPENCLAW_WEB_SEARCH_PROVIDER || "duckduckgo").trim().toLowerCase();
+  if (raw === "none" || raw === "off" || raw === "disabled") return null;
+  return raw;
 }
 
 // -----------------------------------------------------------------------------
@@ -481,6 +505,7 @@ function buildConfig(env) {
   const githubMcpServerConfig = buildGitHubMcpServerConfig(env);
   const hatchableMcpServerConfig = buildHatchableMcpServerConfig(env);
   const trustedProxies = buildTrustedProxies(env);
+  const webSearchProvider = resolveWebSearchProvider(env);
 
   const config = {
     gateway: {
@@ -558,7 +583,14 @@ function buildConfig(env) {
     plugins: buildPluginsConfig({
       hasBedrockProvider: bedrockModels.length > 0,
       whatsappEnabled: whatsappConfig.enabled !== false,
+      webSearchPluginId: webSearchProvider,
     }),
+
+    // Web search tool. Schema-confirmed keys: tools.web.search.{enabled,
+    // provider}. Omitted entirely when OPENCLAW_WEB_SEARCH_PROVIDER=none.
+    ...(webSearchProvider
+      ? { tools: { web: { search: { enabled: true, provider: webSearchProvider } } } }
+      : {}),
 
     // MCP servers (see buildGitHubMcpServerConfig / buildHatchableMcpServerConfig
     // above). Real schema key is mcp.servers.<name>, not a top-level

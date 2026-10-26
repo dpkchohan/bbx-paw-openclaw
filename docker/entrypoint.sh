@@ -132,6 +132,23 @@ if [ "${OPENCLAW_CHANNEL_WHATSAPP_ENABLED:-1}" = "1" ]; then
   fi
 fi
 
+# Web search provider plugin (see resolveWebSearchProvider in
+# config/openclaw.config.js). Default duckduckgo: key-free, official
+# @openclaw/duckduckgo-plugin. Same rules as the WhatsApp block above: npm
+# spec (compatibility-aware, resolves to the newest release this pinned core
+# accepts -- 2026.8.2), --accept-capabilities because there is no TTY, guard
+# with `plugins inspect` so it installs once, never abort startup on failure.
+WEB_SEARCH_PROVIDER="$(printf '%s' "${OPENCLAW_WEB_SEARCH_PROVIDER:-duckduckgo}" | tr 'A-Z' 'a-z')"
+if [ "$WEB_SEARCH_PROVIDER" = "duckduckgo" ]; then
+  if gosu node openclaw plugins inspect duckduckgo >/dev/null 2>&1; then
+    echo "[entrypoint] Web search plugin (duckduckgo) already installed, skipping."
+  else
+    echo "[entrypoint] Installing web search plugin (@openclaw/duckduckgo-plugin, npm) ..."
+    gosu node openclaw plugins install @openclaw/duckduckgo-plugin --accept-capabilities \
+      || echo "[entrypoint] WARNING: web search plugin install failed; continuing without web search."
+  fi
+fi
+
 echo "[entrypoint] Starting as node: $*"
 exec gosu node "$@"
 

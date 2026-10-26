@@ -85,7 +85,11 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18789/readyz"]
+      # /startupz, not /readyz: /readyz returns 503 whenever ANY configured
+      # channel (e.g. WhatsApp) is unhealthy, which makes Coolify/Traefik
+      # drop the whole app ("No available server") even though the Gateway
+      # is fine. /startupz does not consult channel health.
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18789/startupz"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -109,7 +113,12 @@ services:
       # The MCP sidecar reaches the Gateway over the compose network, so it
       # (unlike the Gateway container itself) needs the service URL. Must
       # not fall back to loopback: 127.0.0.1 would be the mcp container.
-      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-http://openclaw:18789}
+      # Deliberately a LITERAL, not ${OPENCLAW_GATEWAY_URL:-...}: Coolify
+      # injects any variable referenced with ${...} (using its stored UI
+      # value) into every service, which re-adds the URL to the Gateway
+      # container and breaks the system agent's inference probe. Do not
+      # define OPENCLAW_GATEWAY_URL in the Coolify UI.
+      OPENCLAW_GATEWAY_URL: "http://openclaw:18789"
     volumes: *openclaw-volumes
     ports:
       - "3001:3001"
