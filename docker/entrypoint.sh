@@ -31,6 +31,29 @@
 # =============================================================================
 set -e
 
+# OPENCLAW_GATEWAY_URL is only meant for the MCP sidecar (it reaches the
+# Gateway over the compose network). Inside the Gateway container itself it
+# makes every `openclaw` call -- cron runs, agent/system-agent inference
+# probes, delivery -- treat the Gateway as REMOTE and abort with "SECURITY
+# ERROR: Gateway URL ... uses plaintext ws:// to a non-loopback address".
+# Coolify re-injects its stored value into every service on each deploy, so
+# compose alone cannot keep it out. Clear it here, only when this container
+# is the Gateway (command starts with `openclaw`); the sidecar's command is
+# `npm run mcp:server`, so it keeps the value it needs.
+if [ "$1" = "openclaw" ]; then
+  unset OPENCLAW_GATEWAY_URL
+  # Interactive shells opened later (Coolify "Terminal" / docker exec) inherit
+  # the container's configured environment, not this script's `unset`. Their
+  # login profile is sourced by Coolify's terminal, so clear it there too,
+  # idempotently, so `openclaw ...` typed by an operator works natively.
+  for profile in /root/.profile /home/node/.profile; do
+    if ! grep -qs 'OPENCLAW_GATEWAY_URL' "$profile" 2>/dev/null; then
+      printf '\n# bbx-paw: Gateway container must not carry the sidecar-only gateway URL\nunset OPENCLAW_GATEWAY_URL\n' >> "$profile"
+    fi
+  done
+  chown node:node /home/node/.profile 2>/dev/null || true
+fi
+
 OPENCLAW_HOME_DIR="${OPENCLAW_HOME:-/home/node}"
 OPENCLAW_DIR="${OPENCLAW_STATE_DIR:-$OPENCLAW_HOME_DIR/.openclaw}"
 OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE_DIR:-$OPENCLAW_DIR/workspace}"
